@@ -7,25 +7,22 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
 
-// Public (webhook only — no auth)
+// Public — no auth
 Route::post('webhooks/google-play', [WebhookController::class, 'googlePlay']);
 Route::post('webhooks/app-store', [WebhookController::class, 'appStore']);
 
-// All app routes require API key
-Route::middleware('api.key')->group(function () {
-    // Registration (user may not exist yet, middleware allows this via register route)
-    Route::post('auth/register', [UserController::class, 'register'])
-        ->withoutMiddleware('api.key')
-        ->middleware('api.key.only');
+// Registration — API key only, no user lookup
+Route::middleware('api.key.only')->group(function () {
+    Route::post('auth/register', [UserController::class, 'register']);
+});
 
+// Authenticated — API key + user lookup
+Route::middleware('api.key')->group(function () {
     // Meal Plans
     Route::get('meal-plans', [MealPlanController::class, 'index']);
-
     Route::post('meal-plans', [MealPlanController::class, 'store'])
         ->middleware('throttle:meal-plan-generate');
-
     Route::delete('meal-plans/{planId}', [MealPlanController::class, 'destroy']);
-
     Route::post('meal-plans/{planId}/days/{dayIndex}/regenerate', [MealPlanController::class, 'regenerateDay'])
         ->middleware('throttle:meal-plan-regenerate');
 

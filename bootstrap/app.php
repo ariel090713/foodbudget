@@ -16,6 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.key' => \App\Http\Middleware\ApiKeyMiddleware::class,
             'api.key.only' => \App\Http\Middleware\ApiKeyOnlyMiddleware::class,
         ]);
+
+        // Force JSON responses for all API routes
+        $middleware->api(prepend: [
+            \App\Http\Middleware\ForceJsonResponse::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
