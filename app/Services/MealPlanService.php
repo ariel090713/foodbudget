@@ -18,7 +18,10 @@ class MealPlanService
         private SubscriptionService $subscriptionService,
     ) {}
 
-    public function generatePlan(array $params, User $user): MealPlan
+    /**
+     * Create a meal plan record and dispatch background generation.
+     */
+    public function createPlan(array $params, User $user): MealPlan
     {
         // Free tier enforcement
         if (! $this->subscriptionService->isActive($user) && $params['numberOfDays'] > config('budgetbite.free_tier_max_days', 1)) {
@@ -31,9 +34,9 @@ class MealPlanService
             $params['numberOfPersons'],
         );
 
-        // Minimum budget check — if you can't even buy 1 cup of rice per meal, reject
+        // Minimum budget check
         $activeMeals = 4 - count($params['skippedMealTypes'] ?? []);
-        $minBudgetPerPersonPerDay = $activeMeals * 5; // ₱5 per meal absolute minimum (half cup rice + salt)
+        $minBudgetPerPersonPerDay = $activeMeals * 5;
         if ($dailyBudgetPerPerson < $minBudgetPerPersonPerDay && $activeMeals > 0) {
             $minTotal = $minBudgetPerPersonPerDay * $params['numberOfDays'] * $params['numberOfPersons'];
             throw new UnprocessableEntityHttpException(
@@ -46,29 +49,67 @@ class MealPlanService
         $tier = $params['preferredTier']
             ?? $this->tierService->detectTier($dailyBudgetPerPerson, $params['countryCode']);
 
-        $thresholds = $this->tierService->getThresholds($params['countryCode']);
-        $isExtremelyLow = $dailyBudgetPerPerson < ($thresholds['poor_min'] * config('budgetbite.basic_meal_threshold_multiplier', 0.5));
-
-        $isPremium = $this->subscriptionService->isActive($user);
-
-        try {
-            $aiResponse = $this->openAIService->generateMealPlan([
+        // Create placeholder record
+        $mealPlan = MealPlan::create([
+            'user_id' => $user->id,
+            'request_json' => [
                 'totalBudget' => $params['totalBudget'],
-                'dailyBudgetPerPerson' => round($dailyBudgetPerPerson, 2),
                 'currencyCode' => $params['currencyCode'],
                 'numberOfDays' => $params['numberOfDays'],
                 'numberOfPersons' => $params['numberOfPersons'],
                 'startDate' => $params['startDate'],
                 'countryCode' => $params['countryCode'],
-                'economicTier' => $tier,
+                'preferredTier' => $params['preferredTier'] ?? null,
                 'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
-                'isExtremelyLowBudget' => $isExtremelyLow,
-                'includePremiumData' => $isPremium,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Meal plan generation failed', ['message' => $e->getMessage()]);
-            throw new HttpException(503, 'Meal plan generation is temporarily unavailable.');
-        }
+            ],
+            'days_json' => [],
+            'total_cost' => 0,
+            'remaining_budget' => $params['totalBudget'],
+            'detected_tier' => $tier,
+            'status' => 'generating',
+        ]);
+
+        // Dispatch background job
+        \App\Jobs\GenerateMealPlanJob::dispatch(
+            $mealPlan->id,
+            $params,
+            $user->id,
+        );
+
+        return $mealPlan;
+    }
+
+    /**
+     * Process the actual AI generation (called from background job).
+     */
+    public function processGeneration(MealPlan $plan, array $params, User $user): void
+    {
+        $dailyBudgetPerPerson = $this->calculateDailyBudget(
+            $params['totalBudget'],
+            $params['numberOfDays'],
+            $params['numberOfPersons'],
+        );
+
+        $tier = $params['preferredTier']
+            ?? $this->tierService->detectTier($dailyBudgetPerPerson, $params['countryCode']);
+
+        $thresholds = $this->tierService->getThresholds($params['countryCode']);
+        $isExtremelyLow = $dailyBudgetPerPerson < ($thresholds['poor_min'] * config('budgetbite.basic_meal_threshold_multiplier', 0.5));
+        $isPremium = $this->subscriptionService->isActive($user);
+
+        $aiResponse = $this->openAIService->generateMealPlan([
+            'totalBudget' => $params['totalBudget'],
+            'dailyBudgetPerPerson' => round($dailyBudgetPerPerson, 2),
+            'currencyCode' => $params['currencyCode'],
+            'numberOfDays' => $params['numberOfDays'],
+            'numberOfPersons' => $params['numberOfPersons'],
+            'startDate' => $params['startDate'],
+            'countryCode' => $params['countryCode'],
+            'economicTier' => $tier,
+            'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
+            'isExtremelyLowBudget' => $isExtremelyLow,
+            'includePremiumData' => $isPremium,
+        ]);
 
         // Build days with proper dates
         $startDate = Carbon::parse($params['startDate']);
@@ -83,29 +124,16 @@ class MealPlanService
             $days[] = $day;
         }
 
-        // Clamp totalCost to budget
         $totalCost = min($totalCost, $params['totalBudget']);
         $remainingBudget = max(0, $params['totalBudget'] - $totalCost);
 
-        $mealPlan = MealPlan::create([
-            'user_id' => $user->id,
-            'request_json' => [
-                'totalBudget' => $params['totalBudget'],
-                'currencyCode' => $params['currencyCode'],
-                'numberOfDays' => $params['numberOfDays'],
-                'numberOfPersons' => $params['numberOfPersons'],
-                'startDate' => $params['startDate'],
-                'countryCode' => $params['countryCode'],
-                'preferredTier' => $params['preferredTier'] ?? null,
-                'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
-            ],
+        $plan->update([
             'days_json' => $days,
             'total_cost' => $totalCost,
             'remaining_budget' => $remainingBudget,
             'detected_tier' => $tier,
+            'status' => 'completed',
         ]);
-
-        return $mealPlan;
     }
 
     public function regenerateDay(MealPlan $plan, int $dayIndex): array
@@ -119,8 +147,6 @@ class MealPlanService
 
         $originalDay = $days[$dayIndex];
         $dailyBudget = (float) ($originalDay['dailyCost'] ?? 0);
-
-        // Allow a bit more budget from remaining
         $availableBudget = $dailyBudget + (float) $plan->remaining_budget;
 
         try {
@@ -139,11 +165,9 @@ class MealPlanService
             throw new HttpException(503, 'Meal plan generation is temporarily unavailable.');
         }
 
-        // Ensure structure
         $newDay['dayIndex'] = $dayIndex;
         $newDay['date'] = $originalDay['date'] ?? Carbon::parse($request['startDate'])->addDays($dayIndex)->toDateString();
 
-        // Update the plan
         $days[$dayIndex] = $newDay;
         $newTotalCost = array_sum(array_column($days, 'dailyCost'));
         $newTotalCost = min($newTotalCost, $request['totalBudget']);

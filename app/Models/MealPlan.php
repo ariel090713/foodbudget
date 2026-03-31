@@ -17,6 +17,7 @@ class MealPlan extends Model
         'total_cost',
         'remaining_budget',
         'detected_tier',
+        'status',
     ];
 
     protected function casts(): array

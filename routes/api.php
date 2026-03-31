@@ -27,6 +27,7 @@ Route::middleware('api.key')->group(function () {
     Route::get('meal-plans', [MealPlanController::class, 'index']);
     Route::post('meal-plans', [MealPlanController::class, 'store'])
         ->middleware('throttle:meal-plan-generate');
+    Route::get('meal-plans/{planId}', [MealPlanController::class, 'show']);
     Route::delete('meal-plans/{planId}', [MealPlanController::class, 'destroy']);
     Route::post('meal-plans/{planId}/days/{dayIndex}/regenerate', [MealPlanController::class, 'regenerateDay'])
         ->middleware('throttle:meal-plan-regenerate');

@@ -18,14 +18,27 @@ class MealPlanController extends Controller
 
     public function store(GenerateMealPlanRequest $request): JsonResponse
     {
-        $plan = $this->mealPlanService->generatePlan(
+        $plan = $this->mealPlanService->createPlan(
             $request->validated(),
             $request->user(),
         );
 
         return (new MealPlanResource($plan->load('user')))
             ->response()
-            ->setStatusCode(201);
+            ->setStatusCode(202); // Accepted — processing in background
+    }
+
+    public function show(Request $request, string $planId): JsonResponse
+    {
+        $plan = MealPlan::where('id', $planId)
+            ->where('user_id', $request->user()->id)
+            ->first();
+
+        if (! $plan) {
+            return response()->json(['message' => 'Meal plan not found.'], 404);
+        }
+
+        return (new MealPlanResource($plan->load('user')))->response();
     }
 
     public function index(Request $request): JsonResponse

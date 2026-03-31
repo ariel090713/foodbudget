@@ -12,6 +12,7 @@ class MealPlanResource extends JsonResource
         return [
             'id' => $this->id,
             'userId' => $this->user?->firebase_uid,
+            'status' => $this->status,
             'request' => $this->request_json,
             'days' => $this->days_json,
             'totalCost' => (float) $this->total_cost,
