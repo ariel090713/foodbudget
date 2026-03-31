@@ -17,7 +17,9 @@ class UserController extends Controller
             [
                 'email' => $request->email,
                 'display_name' => $request->display_name,
-                'name' => $request->display_name ?? $request->email ?? 'User',
+                'photo_url' => $request->photo_url,
+                'is_anonymous' => $request->boolean('is_anonymous', false),
+                'name' => $request->display_name ?? $request->email ?? 'Guest',
             ],
         );
 

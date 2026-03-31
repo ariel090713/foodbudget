@@ -21,6 +21,8 @@ class User extends Authenticatable // implements MustVerifyEmail
         'password',
         'firebase_uid',
         'display_name',
+        'photo_url',
+        'is_anonymous',
         'country',
     ];
 
@@ -34,6 +36,7 @@ class User extends Authenticatable // implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_anonymous' => 'boolean',
         ];
     }
 

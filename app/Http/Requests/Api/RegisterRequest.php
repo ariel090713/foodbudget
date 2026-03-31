@@ -17,6 +17,8 @@ class RegisterRequest extends FormRequest
             'firebase_uid' => ['required', 'string'],
             'email' => ['nullable', 'email'],
             'display_name' => ['nullable', 'string', 'max:255'],
+            'photo_url' => ['nullable', 'string', 'max:2048'],
+            'is_anonymous' => ['nullable', 'boolean'],
         ];
     }
 }

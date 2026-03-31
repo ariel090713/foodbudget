@@ -13,8 +13,8 @@ class AuthUserResource extends JsonResource
             'uid' => $this->firebase_uid,
             'email' => $this->email,
             'displayName' => $this->display_name,
-            'photoUrl' => null,
-            'isAnonymous' => empty($this->email),
+            'photoUrl' => $this->photo_url,
+            'isAnonymous' => (bool) $this->is_anonymous,
         ];
     }
 }
