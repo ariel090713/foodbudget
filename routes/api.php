@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\FcmTokenController;
 use App\Http\Controllers\Api\MealPlanController;
+use App\Http\Controllers\Api\PromoCodeController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebhookController;
@@ -11,9 +13,12 @@ use Illuminate\Support\Facades\Route;
 Route::post('webhooks/google-play', [WebhookController::class, 'googlePlay']);
 Route::post('webhooks/app-store', [WebhookController::class, 'appStore']);
 
-// Registration — API key only, no user lookup
+// Countries — API key only (no user needed, app uses this for country picker)
 Route::middleware('api.key.only')->group(function () {
     Route::post('auth/register', [UserController::class, 'register']);
+    Route::get('countries', [CountryController::class, 'index']);
+    Route::get('countries/{code}', [CountryController::class, 'show']);
+    Route::get('countries/{code}/prices', [CountryController::class, 'prices']);
 });
 
 // Authenticated — API key + user lookup
@@ -30,6 +35,7 @@ Route::middleware('api.key')->group(function () {
     Route::post('subscriptions/verify', [SubscriptionController::class, 'verify']);
     Route::get('subscriptions/status', [SubscriptionController::class, 'status']);
     Route::post('subscriptions/restore', [SubscriptionController::class, 'restore']);
+    Route::post('subscriptions/redeem', [PromoCodeController::class, 'redeem']);
 
     // FCM Tokens
     Route::post('fcm-tokens', [FcmTokenController::class, 'store']);

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Country;
+
 class TierService
 {
     public function detectTier(float $dailyBudgetPerPerson, string $countryCode): string
@@ -25,6 +27,17 @@ class TierService
 
     public function getThresholds(string $countryCode): array
     {
-        return config("tiers.countries.{$countryCode}", config('tiers.default'));
+        $country = Country::find($countryCode);
+
+        if ($country) {
+            return [
+                'poor_min' => (float) $country->tier_poor_min,
+                'middle_class_min' => (float) $country->tier_middle_class_min,
+                'rich_min' => (float) $country->tier_rich_min,
+            ];
+        }
+
+        // Fallback to config defaults
+        return config('tiers.default');
     }
 }

@@ -19,6 +19,7 @@ class RegisterRequest extends FormRequest
             'display_name' => ['nullable', 'string', 'max:255'],
             'photo_url' => ['nullable', 'string', 'max:2048'],
             'is_anonymous' => ['nullable', 'boolean'],
+            'country_code' => ['nullable', 'string', 'size:2'],
         ];
     }
 }

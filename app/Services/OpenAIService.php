@@ -27,34 +27,84 @@ class OpenAIService
             ? implode(', ', $params['skippedMealTypes'])
             : 'none';
 
-        $basicMealNote = '';
-        if (($params['isExtremelyLowBudget'] ?? false)) {
-            $basicMealNote = "\n- The budget is EXTREMELY tight. Use basic fallback meals (rice with salt, instant noodles, water) and set isBasicMeal: true for those meals.";
+        $skippedInstruction = '';
+        if (! empty($params['skippedMealTypes'])) {
+            $skippedList = implode(', ', $params['skippedMealTypes']);
+            $skippedInstruction = "\n\nSKIPPED MEALS — ABSOLUTE RULES:\n"
+                . "- These meal types are SKIPPED: {$skippedList}\n"
+                . "- For EACH skipped type, return EXACTLY this:\n"
+                . "  {\"type\":\"<type>\",\"name\":\"Skipped\",\"description\":\"Skipped by user\",\"ingredients\":[],\"estimatedCost\":0,\"isSkipped\":true,\"isBasicMeal\":false}\n"
+                . "- Do NOT generate real food for skipped meals. No exceptions.\n"
+                . "- The ENTIRE daily budget goes ONLY to non-skipped meals.";
         }
 
+        $priceTable = $this->getPriceReference($params['countryCode']);
+
+        $survivalNote = '';
+        $dailyBudget = $params['dailyBudgetPerPerson'];
+        if ($params['economicTier'] === 'extremePoverty' || $dailyBudget < 80) {
+            $survivalNote = "\n\nSURVIVAL MODE (budget is extremely low):\n"
+                . "- It is OK to serve plain rice with salt, rice with sugar, rice with soy sauce, instant noodles, or just water\n"
+                . "- Mark these meals with \"isBasicMeal\": true\n"
+                . "- This is survival mode — the goal is calories to survive, not nutrition or variety\n"
+                . "- A meal can literally be \"Kanin at Asin\" (rice and salt) costing ~₱8-10 for 1 cup rice + pinch of salt\n"
+                . "- Do NOT pretend you can make adobo or sinigang for ₱20 — be honest about what the budget allows";
+        }
+
+        $premiumInstruction = '';
+        $premiumMealFields = '';
+        if ($params['includePremiumData'] ?? false) {
+            $premiumInstruction = "\n\nPREMIUM DATA (include these extra fields for each non-skipped meal):\n"
+                . "- \"nutrition\": {\"calories\": number, \"protein\": \"Xg\", \"carbs\": \"Xg\", \"fat\": \"Xg\", \"fiber\": \"Xg\"}\n"
+                . "- \"pros\": [\"High in protein\", \"Budget-friendly\", ...] (2-3 benefits)\n"
+                . "- \"cons\": [\"Low in vitamins\", \"High sodium\", ...] (1-2 downsides)\n"
+                . "- Base nutrition estimates on the actual ingredients and quantities listed\n"
+                . "- For skipped meals, omit nutrition/pros/cons";
+
+            $premiumMealFields = ",\n          \"nutrition\": {\"calories\": 350, \"protein\": \"12g\", \"carbs\": \"45g\", \"fat\": \"8g\", \"fiber\": \"2g\"},\n"
+                . "          \"pros\": [\"Good source of protein\", \"Budget-friendly\"],\n"
+                . "          \"cons\": [\"Low in vegetables\"]";
+        }
+
+        $varietyRule = $params['numberOfDays'] > 1
+            ? "- VARIETY IS CRITICAL: For multi-day plans, NEVER repeat the same meal name for the same meal type across ANY two days. Each breakfast must be different, each lunch must be different, etc. Use the full range of local dishes available at this budget level."
+            : "- Use a good variety of local dishes for the 4 meals.";
+
         return <<<PROMPT
-You are a meal planning assistant. Generate a {$params['numberOfDays']}-day meal plan
-for {$params['numberOfPersons']} person(s) in {$params['countryCode']}.
+You are a meal cost calculator and budget planner with EXACT knowledge of real {$params['countryCode']} grocery/wet market prices as of 2025. You plan homemade meals, NOT restaurant meals.
+
+Generate a {$params['numberOfDays']}-day meal plan for {$params['numberOfPersons']} person(s) in {$params['countryCode']}.
 
 Budget: {$params['totalBudget']} {$params['currencyCode']} total
-Daily budget per person: {$params['dailyBudgetPerPerson']} {$params['currencyCode']}
+Daily budget per person: {$dailyBudget} {$params['currencyCode']}
 Economic tier: {$params['economicTier']}
 Start date: {$params['startDate']}
 Skipped meals: {$skipped}
 
-Requirements:
-- Use local cuisine and realistic local market prices for {$params['countryCode']}
-- All prices in {$params['currencyCode']}
-- Total cost of ALL meals must NOT exceed {$params['totalBudget']} {$params['currencyCode']}
-- The running total cost must never exceed the total budget at any point in the plan
-- Each day has 4 meal slots: breakfast, lunch, dinner, meryenda
-- Skipped meals must have estimatedCost: 0, ingredients: [], isSkipped: true
-- Even skipped meals must appear as entries
-- Provide variety: do not repeat the same meal for the same meal type within the previous 2 days
-- Select meals appropriate for the "{$params['economicTier']}" economic tier
-- If meals are skipped, allocate the freed budget to remaining active meals{$basicMealNote}
+{$priceTable}
+{$skippedInstruction}
+{$survivalNote}
+{$premiumInstruction}
 
-Return ONLY a JSON object with this exact structure (no markdown, no explanation):
+PRICING RULES — YOU MUST FOLLOW THESE:
+1. estimatedCost = actual cost to BUY the raw ingredients for {$params['numberOfPersons']} person(s)
+2. List ingredients with EXACT quantities: "rice 1 cup (150g)", "egg 1 pc", "pork 100g"
+3. Calculate cost per ingredient based on the price reference above, then SUM them
+4. Example: Sinangag + Itlog = rice 1 cup (~₱8) + cooking oil 1 tbsp (~₱3) + garlic 2 cloves (~₱3) + egg 1 pc (~₱11) = ₱25 total. So estimatedCost: 25
+5. NEVER guess — if chicken adobo needs 250g chicken (₱50) + soy sauce 2 tbsp (₱5) + vinegar 2 tbsp (₱4) + garlic (₱3) + rice 1 cup (₱8) = ₱70 minimum
+6. If the budget cannot afford a real dish, use survival meals: kanin at asin, kanin at asukal, instant noodles, lugaw
+7. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
+8. totalCost MUST equal the SUM of all dailyCosts
+9. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']}
+
+MEAL RULES:
+- Each day has 4 slots: breakfast, lunch, dinner, meryenda
+- All 4 slots must appear in the response (skipped ones with isSkipped: true)
+{$varietyRule}
+- Meals must be appropriate for "{$params['economicTier']}" tier
+- Use local {$params['countryCode']} cuisine and local ingredient names
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "days": [
     {
@@ -62,47 +112,87 @@ Return ONLY a JSON object with this exact structure (no markdown, no explanation
       "meals": [
         {
           "type": "breakfast",
-          "name": "Meal Name",
-          "description": "Brief description",
-          "ingredients": ["ingredient1", "ingredient2"],
-          "estimatedCost": 50.0,
+          "name": "Sinangag at Itlog",
+          "description": "Garlic fried rice with fried egg",
+          "ingredients": ["rice 1 cup (150g)", "egg 1 pc", "garlic 2 cloves", "cooking oil 1 tbsp"],
+          "estimatedCost": 25.0,
           "isSkipped": false,
-          "isBasicMeal": false
+          "isBasicMeal": false{$premiumMealFields}
         }
       ],
-      "dailyCost": 200.0
+      "dailyCost": 150.0
     }
   ],
-  "totalCost": 1400.0
+  "totalCost": 150.0
 }
 PROMPT;
+    }
+
+    private function getPriceReference(string $countryCode): string
+    {
+        $prices = \App\Models\FoodPrice::where('country_code', $countryCode)
+            ->orderBy('category')
+            ->orderByDesc('is_common')
+            ->get();
+
+        if ($prices->isEmpty()) {
+            return "No price data available for this country. Use your best knowledge of real 2025 grocery prices for country code {$countryCode}. Do NOT underestimate.";
+        }
+
+        $country = \App\Models\Country::find($countryCode);
+        $currencySymbol = $country?->currency_symbol ?? '';
+        $countryName = $country?->name ?? $countryCode;
+
+        $lines = ["REAL 2025 {$countryName} MARKET PRICES (use these as reference):"];
+        $currentCategory = '';
+
+        foreach ($prices as $price) {
+            if ($price->category !== $currentCategory) {
+                $currentCategory = $price->category;
+                $lines[] = strtoupper($currentCategory) . ':';
+            }
+
+            $name = $price->item_name;
+            if ($price->local_name && $price->local_name !== $price->item_name) {
+                $name .= " ({$price->local_name})";
+            }
+
+            $lines[] = "  {$name}: {$price->unit} = {$currencySymbol}{$price->price_min}-{$price->price_max}";
+        }
+
+        return implode("\n", $lines);
     }
 
     private function buildRegenerateDayPrompt(array $params, array $originalDay): string
     {
         $originalMeals = json_encode($originalDay['meals']);
+        $priceTable = $this->getPriceReference($params['countryCode']);
 
         return <<<PROMPT
-You are a meal planning assistant. Regenerate meals for day index {$params['dayIndex']}
-of a meal plan for {$params['numberOfPersons']} person(s) in {$params['countryCode']}.
+You are a meal cost calculator with EXACT knowledge of real {$params['countryCode']} grocery prices as of 2025.
+
+Regenerate meals for day index {$params['dayIndex']} for {$params['numberOfPersons']} person(s) in {$params['countryCode']}.
 
 Budget for this day: {$params['dailyBudget']} {$params['currencyCode']}
 Economic tier: {$params['economicTier']}
 Date: {$params['date']}
 Skipped meals: {$params['skippedMealTypes']}
 
-The ORIGINAL meals for this day were:
+{$priceTable}
+
+The ORIGINAL meals for this day (generate DIFFERENT ones):
 {$originalMeals}
 
-Requirements:
-- Provide DIFFERENT meals from the originals above
-- Use local cuisine and realistic local market prices for {$params['countryCode']}
-- All prices in {$params['currencyCode']}
+RULES:
+- Provide DIFFERENT meals from the originals
+- estimatedCost = actual cost to BUY raw ingredients for {$params['numberOfPersons']} person(s)
+- List ingredients with exact quantities
 - Daily cost must not exceed {$params['dailyBudget']} {$params['currencyCode']}
-- Each day has 4 meal slots: breakfast, lunch, dinner, meryenda
-- Skipped meals keep estimatedCost: 0, ingredients: [], isSkipped: true
+- 4 meal slots: breakfast, lunch, dinner, meryenda
+- Skipped meals: estimatedCost: 0, ingredients: [], isSkipped: true
+- If budget is very low, survival meals are OK (rice + salt, instant noodles)
 
-Return ONLY a JSON object (no markdown):
+Return ONLY valid JSON:
 {
   "dayIndex": {$params['dayIndex']},
   "meals": [...],
@@ -120,10 +210,11 @@ PROMPT;
                 $response = OpenAI::chat()->create([
                     'model' => config('budgetbite.openai_model', 'gpt-4o-mini'),
                     'messages' => [
-                        ['role' => 'system', 'content' => 'You are a meal planning assistant that returns only valid JSON.'],
+                        ['role' => 'system', 'content' => 'You are a meal budget calculator. You know EXACT real grocery prices. You calculate meal costs by summing individual ingredient costs. You never underestimate. If the budget is too low for real food, you suggest survival meals like plain rice with salt or sugar. You return only valid JSON.'],
                         ['role' => 'user', 'content' => $prompt],
                     ],
                     'response_format' => ['type' => 'json_object'],
+                    'temperature' => 0.3,
                 ]);
 
                 $content = $response->choices[0]->message->content;
@@ -137,22 +228,14 @@ PROMPT;
 
                 return $parsed;
             } catch (\OpenAI\Exceptions\ErrorException $e) {
-                Log::error('OpenAI API error', [
-                    'attempt' => $attempt,
-                    'message' => $e->getMessage(),
-                ]);
+                Log::error('OpenAI API error', ['attempt' => $attempt, 'message' => $e->getMessage()]);
                 $lastException = $e;
-
                 if ($attempt < $maxRetries) {
                     sleep(min(pow(2, $attempt), 8));
                 }
             } catch (\Throwable $e) {
-                Log::error('OpenAI unexpected error', [
-                    'attempt' => $attempt,
-                    'message' => $e->getMessage(),
-                ]);
+                Log::error('OpenAI unexpected error', ['attempt' => $attempt, 'message' => $e->getMessage()]);
                 $lastException = $e;
-
                 if ($attempt < $maxRetries) {
                     sleep(min(pow(2, $attempt), 8));
                 }

@@ -31,12 +31,25 @@ class MealPlanService
             $params['numberOfPersons'],
         );
 
+        // Minimum budget check — if you can't even buy 1 cup of rice per meal, reject
+        $activeMeals = 4 - count($params['skippedMealTypes'] ?? []);
+        $minBudgetPerPersonPerDay = $activeMeals * 5; // ₱5 per meal absolute minimum (half cup rice + salt)
+        if ($dailyBudgetPerPerson < $minBudgetPerPersonPerDay && $activeMeals > 0) {
+            $minTotal = $minBudgetPerPersonPerDay * $params['numberOfDays'] * $params['numberOfPersons'];
+            throw new UnprocessableEntityHttpException(
+                "Budget too low. You need at least {$minTotal} {$params['currencyCode']} "
+                . "for {$params['numberOfDays']} day(s) and {$params['numberOfPersons']} person(s) "
+                . "({$activeMeals} meals/day). Try increasing your budget, reducing days, or reducing persons."
+            );
+        }
+
         $tier = $params['preferredTier']
             ?? $this->tierService->detectTier($dailyBudgetPerPerson, $params['countryCode']);
 
-        // Check if budget is extremely low
         $thresholds = $this->tierService->getThresholds($params['countryCode']);
         $isExtremelyLow = $dailyBudgetPerPerson < ($thresholds['poor_min'] * config('budgetbite.basic_meal_threshold_multiplier', 0.5));
+
+        $isPremium = $this->subscriptionService->isActive($user);
 
         try {
             $aiResponse = $this->openAIService->generateMealPlan([
@@ -50,6 +63,7 @@ class MealPlanService
                 'economicTier' => $tier,
                 'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
                 'isExtremelyLowBudget' => $isExtremelyLow,
+                'includePremiumData' => $isPremium,
             ]);
         } catch (\Throwable $e) {
             Log::error('Meal plan generation failed', ['message' => $e->getMessage()]);
