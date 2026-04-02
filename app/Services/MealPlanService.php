@@ -187,7 +187,10 @@ class MealPlanService
 
             // Add food images to the new days (premium only)
             if ($isPremium) {
+                Log::info("Enriching days with images for plan {$plan->id}");
                 $allDays = $this->imageService->enrichDaysWithImages($allDays);
+            } else {
+                Log::info("Skipping images — user is not premium for plan {$plan->id}");
             }
 
             // Update plan progressively so Flutter can show partial results
