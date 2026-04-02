@@ -5,6 +5,7 @@ return [
     'gemini_model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
     'openai_model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
     'free_tier_max_days' => 1,
+    'free_tier_max_persons' => 1,
     'basic_meal_threshold_multiplier' => 0.5,
 
     'rate_limits' => [

@@ -24,8 +24,13 @@ class MealPlanService
     public function createPlan(array $params, User $user): MealPlan
     {
         // Free tier enforcement
-        if (! $this->subscriptionService->isActive($user) && $params['numberOfDays'] > config('budgetbite.free_tier_max_days', 1)) {
-            throw new AccessDeniedHttpException('Subscription required for multi-day plans.');
+        if (! $this->subscriptionService->isActive($user)) {
+            if ($params['numberOfDays'] > config('budgetbite.free_tier_max_days', 1)) {
+                throw new AccessDeniedHttpException('Subscription required for multi-day plans.');
+            }
+            if ($params['numberOfPersons'] > config('budgetbite.free_tier_max_persons', 1)) {
+                throw new AccessDeniedHttpException('Subscription required for multi-person plans. Free tier supports 1 person only.');
+            }
         }
 
         // Free tier: max saved plans limit
