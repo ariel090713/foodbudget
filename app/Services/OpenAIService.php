@@ -76,6 +76,9 @@ class OpenAIService
             $previousMealsContext = "\n{$params['previousMealsNote']}\n";
         }
 
+        $activeMeals = 3 - count($params['skippedMealTypes'] ?? []);
+        $mealBudget = $activeMeals > 0 ? round($dailyBudget / $activeMeals, 2) : 0;
+
         return <<<PROMPT
 You are a meal cost calculator with EXACT knowledge of real {$params['countryCode']} grocery/wet market prices as of 2025. You plan homemade meals, NOT restaurant meals.
 
@@ -92,18 +95,21 @@ Skipped meals: {$skipped}
 {$survivalNote}
 {$premiumInstruction}
 
-PRICING RULES:
+PRICING RULES — CRITICAL:
 1. estimatedCost = actual cost to BUY the raw ingredients for {$params['numberOfPersons']} person(s)
 2. List ingredients with EXACT quantities: "rice 1 cup (150g)", "egg 1 pc", "pork 100g"
 3. Calculate cost per ingredient based on the price reference above, then SUM them
-4. If the budget cannot afford a real dish, use survival meals: kanin at asin, kanin at asukal, instant noodles
+4. If the budget cannot afford a real dish, use survival meals (cheapest staple + cheapest side)
 5. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
 6. totalCost MUST equal the SUM of all dailyCosts
-7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']}
+7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']} — THIS IS A HARD LIMIT
+8. BEFORE generating, calculate: budget per day = {$params['totalBudget']} / {$params['numberOfDays']} = {$dailyBudget} per person per day
+9. Each meal's cost must fit within the daily budget. If 3 meals at {$dailyBudget}/day, each meal averages {$mealBudget}
+10. DOUBLE CHECK: add up all meal costs. If total > {$params['totalBudget']}, reduce portions or use cheaper meals
 
 MEAL RULES:
-- Each day has 4 slots: breakfast, lunch, dinner, meryenda
-- All 4 slots must appear (skipped ones with isSkipped: true)
+- Each day has 3 meal slots: breakfast, lunch, dinner
+- All 3 slots must appear (skipped ones with isSkipped: true)
 {$varietyRule}
 - Meals must be appropriate for "{$params['economicTier']}" tier
 - Use local {$params['countryCode']} cuisine and local ingredient names
@@ -122,12 +128,14 @@ Return ONLY valid JSON (no markdown, no code blocks, no explanation):
           "estimatedCost": 25.0,
           "isSkipped": false,
           "isBasicMeal": false{$premiumMealFields}
-        }
+        },
+        {"type": "lunch", "name": "...", "description": "...", "ingredients": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false},
+        {"type": "dinner", "name": "...", "description": "...", "ingredients": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false}
       ],
-      "dailyCost": 150.0
+      "dailyCost": 50.0
     }
   ],
-  "totalCost": 150.0
+  "totalCost": 50.0
 }
 PROMPT;
     }
@@ -224,7 +232,7 @@ RULES:
 - estimatedCost = actual cost to BUY raw ingredients for {$params['numberOfPersons']} person(s)
 - List ingredients with exact quantities
 - Daily cost must not exceed {$params['dailyBudget']} {$params['currencyCode']}
-- 4 meal slots: breakfast, lunch, dinner, meryenda
+- 3 meal slots: breakfast, lunch, dinner
 - Skipped meals: estimatedCost: 0, ingredients: [], isSkipped: true
 
 Return ONLY valid JSON (no markdown, no code blocks):

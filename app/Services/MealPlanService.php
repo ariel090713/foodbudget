@@ -54,7 +54,7 @@ class MealPlanService
         );
 
         // Minimum budget check
-        $activeMeals = 4 - count($params['skippedMealTypes'] ?? []);
+        $activeMeals = 3 - count($params['skippedMealTypes'] ?? []);
         $minBudgetPerPersonPerDay = $activeMeals * 5;
         if ($dailyBudgetPerPerson < $minBudgetPerPersonPerDay && $activeMeals > 0) {
             $minTotal = $minBudgetPerPersonPerDay * $params['numberOfDays'] * $params['numberOfPersons'];
