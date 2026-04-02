@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ImageService;
 use App\Services\MealPlanService;
 use App\Services\OpenAIService;
 use App\Services\SubscriptionService;
@@ -19,6 +20,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TierService::class);
         $this->app->singleton(OpenAIService::class);
         $this->app->singleton(SubscriptionService::class);
+        $this->app->singleton(ImageService::class);
         $this->app->singleton(MealPlanService::class);
     }
 

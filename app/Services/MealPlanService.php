@@ -16,6 +16,7 @@ class MealPlanService
         private OpenAIService $openAIService,
         private TierService $tierService,
         private SubscriptionService $subscriptionService,
+        private ImageService $imageService,
     ) {}
 
     /**
@@ -183,6 +184,11 @@ class MealPlanService
 
             $elapsed = round(microtime(true) - $chunkStart, 1);
             Log::info("Chunk {$chunkNum} done in {$elapsed}s — {$daysInChunk} days, cost: {$chunkCost}");
+
+            // Add food images to the new days (premium only)
+            if ($isPremium) {
+                $allDays = $this->imageService->enrichDaysWithImages($allDays);
+            }
 
             // Update plan progressively so Flutter can show partial results
             $plan->update([

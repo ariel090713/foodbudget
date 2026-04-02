@@ -113,6 +113,7 @@ MEAL RULES:
 {$varietyRule}
 - Meals must be appropriate for "{$params['economicTier']}" tier
 - Use local {$params['countryCode']} cuisine and local ingredient names
+- For each meal, include "imageSearchTerm": a short ENGLISH description for image search (e.g. "garlic fried rice with egg", "pork soup with vegetables")
 
 Return ONLY valid JSON (no markdown, no code blocks, no explanation):
 {
@@ -124,6 +125,7 @@ Return ONLY valid JSON (no markdown, no code blocks, no explanation):
           "type": "breakfast",
           "name": "Sinangag at Itlog",
           "description": "Garlic fried rice with fried egg",
+          "imageSearchTerm": "garlic fried rice with egg",
           "ingredients": ["rice 1 cup (150g)", "egg 1 pc", "garlic 2 cloves", "cooking oil 1 tbsp"],
           "estimatedCost": 25.0,
           "isSkipped": false,
