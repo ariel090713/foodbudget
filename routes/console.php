@@ -25,3 +25,9 @@ Schedule::command('foodprices:populate --batch=2 --mode=update')
     ->weekly()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Update tier thresholds for any countries still on defaults
+Schedule::command('tiers:populate --batch=20')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();

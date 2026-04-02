@@ -87,7 +87,7 @@ class PopulateFoodPrices extends Command
         $currentCount = count($existing);
 
         // Skip if country already has enough items
-        if ($currentCount >= 120) {
+        if ($currentCount >= 300) {
             $this->info("  → Skipped (already has {$currentCount} items)");
             $country->update(['prices_updated_at' => now()]);
             return;
