@@ -28,7 +28,8 @@ class AppServiceProvider extends ServiceProvider
     {
         RateLimiter::for('meal-plan-generate', function (Request $request) {
             $user = $request->user();
-            $isPremium = $user?->subscription?->isActive();
+            $subscription = $user ? \App\Models\Subscription::where('user_id', $user->id)->first() : null;
+            $isPremium = $subscription && $subscription->isActive();
             $limit = $isPremium
                 ? config('budgetbite.rate_limits.premium_plans_per_day', 10)
                 : config('budgetbite.rate_limits.free_plans_per_day', 5);
@@ -50,7 +51,8 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('meal-plan-regenerate', function (Request $request) {
             $user = $request->user();
-            $isPremium = $user?->subscription?->isActive();
+            $subscription = $user ? \App\Models\Subscription::where('user_id', $user->id)->first() : null;
+            $isPremium = $subscription && $subscription->isActive();
             $limit = $isPremium ? 100 : config('budgetbite.rate_limits.free_regenerations_per_day', 5);
 
             return Limit::perDay($limit)
