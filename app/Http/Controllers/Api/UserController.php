@@ -9,6 +9,7 @@ use App\Jobs\PopulateCountryFoodPrices;
 use App\Models\Country;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
@@ -44,5 +45,18 @@ class UserController extends Controller
         return (new AuthUserResource($user))
             ->response()
             ->setStatusCode(200);
+    }
+
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // Delete all related data
+        $user->mealPlans()->delete();
+        $user->subscription()->delete();
+        $user->fcmTokens()->delete();
+        $user->delete();
+
+        return response()->json(['message' => 'Account and all data deleted.']);
     }
 }

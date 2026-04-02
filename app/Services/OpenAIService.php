@@ -113,7 +113,13 @@ MEAL RULES:
 {$varietyRule}
 - Meals must be appropriate for "{$params['economicTier']}" tier
 - Use local {$params['countryCode']} cuisine and local ingredient names
-- For each meal, include "imageSearchTerm": a short ENGLISH description for image search (e.g. "garlic fried rice with egg", "pork soup with vegetables")
+- For each meal, include "imageSearchTerm": a short ENGLISH description for image search
+- A meal can have multiple dishes! Use the "dishes" array for countries where meals have multiple components
+  Example: Korean lunch = rice + main dish + side dishes (banchan) + soup
+  Example: Filipino lunch = rice + ulam (main dish)
+  Example: Indian lunch = rice/roti + dal + sabzi + raita
+  For simple meals (1 dish only), still use the dishes array with 1 item
+- estimatedCost is the TOTAL cost of all dishes in that meal combined
 
 Return ONLY valid JSON (no markdown, no code blocks, no explanation):
 {
@@ -126,13 +132,16 @@ Return ONLY valid JSON (no markdown, no code blocks, no explanation):
           "name": "Sinangag at Itlog",
           "description": "Garlic fried rice with fried egg",
           "imageSearchTerm": "garlic fried rice with egg",
-          "ingredients": ["rice 1 cup (150g)", "egg 1 pc", "garlic 2 cloves", "cooking oil 1 tbsp"],
+          "dishes": [
+            {"name": "Sinangag", "description": "Garlic fried rice", "ingredients": ["rice 1 cup (150g)", "garlic 2 cloves", "cooking oil 1 tbsp"]},
+            {"name": "Itlog", "description": "Fried egg", "ingredients": ["egg 1 pc", "cooking oil 1 tsp"]}
+          ],
           "estimatedCost": 25.0,
           "isSkipped": false,
           "isBasicMeal": false{$premiumMealFields}
         },
-        {"type": "lunch", "name": "...", "description": "...", "ingredients": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false},
-        {"type": "dinner", "name": "...", "description": "...", "ingredients": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false}
+        {"type": "lunch", "name": "...", "description": "...", "imageSearchTerm": "...", "dishes": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false},
+        {"type": "dinner", "name": "...", "description": "...", "imageSearchTerm": "...", "dishes": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false}
       ],
       "dailyCost": 50.0
     }

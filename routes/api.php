@@ -23,6 +23,9 @@ Route::middleware('api.key.only')->group(function () {
 
 // Authenticated — API key + user lookup
 Route::middleware('api.key')->group(function () {
+    // Account
+    Route::delete('auth/account', [UserController::class, 'deleteAccount']);
+
     // Meal Plans
     Route::get('meal-plans', [MealPlanController::class, 'index']);
     Route::post('meal-plans', [MealPlanController::class, 'store'])
