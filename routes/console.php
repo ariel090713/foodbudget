@@ -14,9 +14,9 @@ Schedule::command('foodprices:populate --batch=5 --mode=initial')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Expand: add new food items to countries with < 100 items (2 at a time)
+// Expand: add more food items to countries with < 1000 items (2 at a time)
 Schedule::command('foodprices:populate --batch=2 --mode=expand')
-    ->everyFourHours()
+    ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
 

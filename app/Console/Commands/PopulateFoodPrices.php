@@ -87,7 +87,7 @@ class PopulateFoodPrices extends Command
         $currentCount = count($existing);
 
         // Skip if country already has enough items
-        if ($currentCount >= 300) {
+        if ($currentCount >= 2000) {
             $this->info("  → Skipped (already has {$currentCount} items)");
             $country->update(['prices_updated_at' => now()]);
             return;
@@ -149,33 +149,85 @@ PROMPT;
 
     private function buildExpandPrompt(Country $country, string $existingList, int $currentCount): string
     {
-        $target = max(15, 30 - (int) ($currentCount / 5));
+        $target = max(20, 40 - (int) ($currentCount / 50));
+        $currentMonth = now()->format('F');
+        $currentSeason = $this->detectSeason($country->code);
+
+        $focusAreas = [
+            ["Street food and hawker/vendor items with vendor prices", "Cheap cooked meals sold by street vendors", "Local snack items from convenience stores"],
+            ["Regional/provincial specialty ingredients from different regions of {$country->name}", "Ethnic minority cuisine ingredients", "Ingredients for traditional holiday/festival dishes"],
+            ["Canned goods and preserved foods", "Dried foods (dried fish, dried meat, dried vegetables)", "Pickled and fermented items"],
+            ["Breakfast-specific items and ingredients", "Bakery items (local breads, pastries)", "Spreads, jams, and toppings"],
+            ["Organ meats and offal (liver, intestines, heart, etc.)", "Cheap cuts of meat and bones for soup", "Processed meats (hotdog, corned beef, luncheon meat)"],
+            ["Leafy greens and herbs currently in season ({$currentMonth})", "Root vegetables and tubers", "Seasonal fruits available now in {$country->name}"],
+            ["Sauces, pastes, curry bases, and marinades", "Spice mixes and seasoning packets", "Cooking essentials (flour, starch, baking items)"],
+            ["Baby food and porridge items", "Instant/ready-to-eat meals and canned meals", "Budget survival foods (absolute cheapest items available)"],
+            ["Seafood varieties (fresh, dried, canned, smoked)", "Shellfish and crustaceans", "Seaweed and aquatic vegetables"],
+            ["Nuts, seeds, and legumes", "Grains beyond rice (millet, sorghum, quinoa, oats, etc.)", "Noodle and pasta varieties (local and imported)"],
+            ["Beverages (local drinks, powdered drinks, fresh juices)", "Dairy products and alternatives", "Frozen foods and ice cream"],
+            ["Condiments specific to {$country->name} cuisine", "Cooking oils and fats (different types)", "Vinegars, fermented sauces, and dipping sauces"],
+            ["Foods currently in season in {$country->name} ({$currentMonth}, {$currentSeason})", "Seasonal price changes — items that are cheaper right now", "Festival/holiday foods for upcoming celebrations"],
+            ["Complete cheap meals under the poverty line", "Combinations: staple + cheapest protein", "What a family of 4 eats on minimum wage in {$country->name}"],
+        ];
+
+        $focusIndex = (int) ($currentCount / 40) % count($focusAreas);
+        $focus = implode("\n- ", $focusAreas[$focusIndex]);
 
         return <<<PROMPT
-You are a grocery price database for {$country->name} ({$country->code}).
+You are a food and grocery expert for {$country->name} ({$country->code}).
 Currency: {$country->currency_code} ({$country->currency_symbol})
+Current month: {$currentMonth} ({$currentSeason} season)
 
-I already have these {$currentCount} food items in my database:
+I have {$currentCount} food items. Generate {$target} NEW items NOT already in my database.
+
+Existing items (DO NOT repeat):
 {$existingList}
 
-Generate {$target} NEW food items that are NOT in the list above. Focus on:
-- Regional/provincial dishes and ingredients unique to {$country->name}
-- Street food ingredients and snacks
-- Seasonal fruits and vegetables
-- Less common but available proteins (organ meats, dried fish, canned goods)
-- Cooking ingredients (different oils, sauces, pastes, spice mixes)
-- Breakfast-specific items
-- Budget/survival food items (cheapest possible foods)
-- Festival or holiday food ingredients
+FOCUS THIS TIME ON:
+- {$focus}
 
 RULES:
-- Do NOT repeat any item already in my database
-- Use REAL 2025 prices for {$country->name}
-- Include local names
-- Mix of common (is_common: true) and specialty (is_common: false) items
+- Every item must be ACTUALLY available in {$country->name} right now
+- Use REAL {$currentMonth} 2025 prices (seasonal prices may differ from annual average)
+- Include local names in the local language of {$country->name}
+- Be SPECIFIC: "Pork belly" not "Pork", "Saba banana" not "Banana", "Jasmine rice" not "Rice"
+- Include cooked/prepared street food with vendor prices
+- For seasonal items, set availability to "seasonal" and note the season
+- Add a brief note for interesting items (e.g. "Price doubles during Christmas season")
 
-Return JSON: {"items": [{"item_name":"...","local_name":"...","unit":"...","price_min":0,"price_max":0,"category":"...","is_common":true}]}
+Return JSON:
+{{"items": [{{"item_name":"...","local_name":"...","unit":"...","price_min":0,"price_max":0,"category":"...","is_common":true,"season":"{$currentSeason}","availability":"all_year","notes":"..."}}]}}
 PROMPT;
+    }
+
+    private function detectSeason(string $countryCode): string
+    {
+        $month = (int) now()->format('n');
+
+        // Southern hemisphere countries
+        $southern = ['AU', 'NZ', 'AR', 'CL', 'ZA', 'BR', 'PY', 'UY', 'MZ', 'ZW', 'ZM'];
+        if (in_array($countryCode, $southern)) {
+            return match (true) {
+                $month >= 3 && $month <= 5 => 'autumn',
+                $month >= 6 && $month <= 8 => 'winter',
+                $month >= 9 && $month <= 11 => 'spring',
+                default => 'summer',
+            };
+        }
+
+        // Tropical countries (wet/dry seasons)
+        $tropical = ['PH', 'TH', 'VN', 'ID', 'MY', 'MM', 'KH', 'LA', 'BD', 'LK', 'IN', 'NG', 'GH', 'KE', 'TZ', 'UG', 'CM', 'CI', 'SN', 'BF', 'BJ', 'CD', 'MZ', 'ET', 'RW'];
+        if (in_array($countryCode, $tropical)) {
+            return ($month >= 6 && $month <= 11) ? 'wet_season' : 'dry_season';
+        }
+
+        // Northern hemisphere (default)
+        return match (true) {
+            $month >= 3 && $month <= 5 => 'spring',
+            $month >= 6 && $month <= 8 => 'summer',
+            $month >= 9 && $month <= 11 => 'autumn',
+            default => 'winter',
+        };
     }
 
     private function buildUpdatePrompt(Country $country, string $itemList): string
@@ -214,6 +266,9 @@ PROMPT;
                     'currency_code' => $country->currency_code,
                     'category' => $item['category'] ?? 'staple',
                     'is_common' => $item['is_common'] ?? true,
+                    'season' => $item['season'] ?? null,
+                    'availability' => $item['availability'] ?? 'all_year',
+                    'notes' => $item['notes'] ?? null,
                 ],
             );
         }

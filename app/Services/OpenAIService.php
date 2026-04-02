@@ -42,12 +42,14 @@ class OpenAIService
         $survivalNote = '';
         $dailyBudget = $params['dailyBudgetPerPerson'];
         if ($params['economicTier'] === 'extremePoverty' || $dailyBudget < 80) {
+            $cheapItems = $this->getCheapFoodExamples($params['countryCode']);
             $survivalNote = "\n\nSURVIVAL MODE (budget is extremely low):\n"
-                . "- It is OK to serve plain rice with salt, rice with sugar, rice with soy sauce, instant noodles, or just water\n"
-                . "- Mark these meals with \"isBasicMeal\": true\n"
-                . "- This is survival mode — the goal is calories to survive, not nutrition or variety\n"
-                . "- A meal can literally be \"Kanin at Asin\" (rice and salt) costing ~8-10 for 1 cup rice + pinch of salt\n"
-                . "- Do NOT pretend you can make adobo or sinigang for 20 — be honest about what the budget allows";
+                . "- Use the CHEAPEST possible real meals from this country. Prioritize variety even on tight budgets.\n"
+                . "- CHEAP MEAL IDEAS for {$params['countryCode']} (mix and match, be creative):\n"
+                . "{$cheapItems}\n"
+                . "- ONLY use plain rice/bread with salt/sugar as ABSOLUTE LAST RESORT when nothing else fits\n"
+                . "- Mark all survival meals with \"isBasicMeal\": true\n"
+                . "- Be honest about costs — don't pretend expensive dishes can be made cheaply";
         }
 
         $premiumInstruction = '';
@@ -128,6 +130,45 @@ Return ONLY valid JSON (no markdown, no code blocks, no explanation):
   "totalCost": 150.0
 }
 PROMPT;
+    }
+
+    private function getCheapFoodExamples(string $countryCode): string
+    {
+        $currentMonth = now()->format('F');
+
+        // Get cheapest items, prefer in-season and all-year items
+        $cheapItems = \App\Models\FoodPrice::where('country_code', $countryCode)
+            ->where('is_common', true)
+            ->where(function ($q) {
+                $q->where('availability', 'all_year')
+                  ->orWhere('availability', 'seasonal');
+            })
+            ->orderBy('price_min')
+            ->limit(25)
+            ->get();
+
+        if ($cheapItems->isEmpty()) {
+            return "  * Use the cheapest local staples, street food, canned goods, eggs, dried fish, instant noodles\n"
+                . "  * Combine a cheap staple (rice/bread) with the cheapest available protein or side";
+        }
+
+        $country = \App\Models\Country::find($countryCode);
+        $sym = $country?->currency_symbol ?? '';
+
+        $lines = ["  Current month: {$currentMonth} — use seasonal items when available"];
+        foreach ($cheapItems as $item) {
+            $name = $item->local_name && $item->local_name !== $item->item_name
+                ? "{$item->item_name} ({$item->local_name})"
+                : $item->item_name;
+            $seasonal = $item->availability === 'seasonal' ? ' [seasonal]' : '';
+            $lines[] = "  * {$name}: {$item->unit} = {$sym}{$item->price_min}-{$item->price_max}{$seasonal}";
+        }
+
+        $lines[] = "  * Combine cheap staple + cheapest protein/side for a real meal";
+        $lines[] = "  * Street food portions are valid cheap meals";
+        $lines[] = "  * Use seasonal items — they're fresher and cheaper right now";
+
+        return implode("\n", $lines);
     }
 
     private function getPriceReference(string $countryCode): string

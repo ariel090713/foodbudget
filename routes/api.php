@@ -31,6 +31,7 @@ Route::middleware('api.key')->group(function () {
     Route::delete('meal-plans/{planId}', [MealPlanController::class, 'destroy']);
     Route::post('meal-plans/{planId}/days/{dayIndex}/regenerate', [MealPlanController::class, 'regenerateDay'])
         ->middleware('throttle:meal-plan-regenerate');
+    Route::put('meal-plans/{planId}/days/{dayIndex}', [MealPlanController::class, 'updateDay']);
 
     // Subscriptions
     Route::post('subscriptions/verify', [SubscriptionController::class, 'verify']);

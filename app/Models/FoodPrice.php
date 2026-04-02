@@ -17,6 +17,9 @@ class FoodPrice extends Model
         'currency_code',
         'category',
         'is_common',
+        'season',
+        'availability',
+        'notes',
     ];
 
     protected function casts(): array

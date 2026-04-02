@@ -29,7 +29,7 @@ class CountryController extends Controller
         return (new CountryResource($country))->response();
     }
 
-    public function prices(string $code): JsonResponse
+    public function prices(Request $request, string $code): JsonResponse
     {
         $country = Country::find(strtoupper($code));
 
@@ -37,12 +37,36 @@ class CountryController extends Controller
             return response()->json(['message' => 'Country not found.'], 404);
         }
 
-        $prices = FoodPrice::where('country_code', $country->code)
-            ->orderBy('category')
-            ->orderByDesc('is_common')
-            ->orderBy('item_name')
-            ->get()
-            ->map(fn ($p) => [
+        $query = FoodPrice::where('country_code', $country->code);
+
+        // Filter by category
+        if ($category = $request->query('category')) {
+            $query->where('category', $category);
+        }
+
+        // Search by name
+        if ($search = $request->query('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('item_name', 'like', "%{$search}%")
+                  ->orWhere('local_name', 'like', "%{$search}%");
+            });
+        }
+
+        // Sort
+        $sort = $request->query('sort', 'name'); // name, price_low, price_high
+        match ($sort) {
+            'price_low' => $query->orderBy('price_min'),
+            'price_high' => $query->orderByDesc('price_max'),
+            default => $query->orderBy('item_name'),
+        };
+
+        $perPage = min((int) $request->query('per_page', 50), 200);
+        $paginated = $query->paginate($perPage);
+
+        return response()->json([
+            'country' => new CountryResource($country),
+            'prices' => collect($paginated->items())->map(fn ($p) => [
+                'id' => $p->id,
                 'itemName' => $p->item_name,
                 'localName' => $p->local_name,
                 'unit' => $p->unit,
@@ -51,11 +75,13 @@ class CountryController extends Controller
                 'currencyCode' => $p->currency_code,
                 'category' => $p->category,
                 'isCommon' => $p->is_common,
-            ]);
-
-        return response()->json([
-            'country' => new CountryResource($country),
-            'prices' => $prices,
+            ]),
+            'pagination' => [
+                'total' => $paginated->total(),
+                'perPage' => $paginated->perPage(),
+                'currentPage' => $paginated->currentPage(),
+                'lastPage' => $paginated->lastPage(),
+            ],
         ]);
     }
 }
