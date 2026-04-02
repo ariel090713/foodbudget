@@ -8,15 +8,15 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
 
-// Initial population: fill countries that have no prices yet (5 at a time)
-Schedule::command('foodprices:populate --batch=5 --mode=initial')
-    ->everyTenMinutes()
+// Initial population: fill countries that have no prices yet (10 at a time)
+Schedule::command('foodprices:populate --batch=10 --mode=initial')
+    ->everyFiveMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 
-// Expand: add more food items to countries with < 1000 items (2 at a time)
-Schedule::command('foodprices:populate --batch=2 --mode=expand')
-    ->hourly()
+// Expand: add more food items to countries with < 2000 items (5 at a time)
+Schedule::command('foodprices:populate --batch=5 --mode=expand')
+    ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 
