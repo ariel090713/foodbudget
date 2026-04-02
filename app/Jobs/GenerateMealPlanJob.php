@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Models\MealPlan;
 use App\Models\User;
 use App\Services\MealPlanService;
-use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -19,7 +18,7 @@ class GenerateMealPlanJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 180;
+    public int $timeout = 600; // 10 minutes for large plans
 
     public function __construct(
         public string $mealPlanId,
@@ -41,7 +40,7 @@ class GenerateMealPlanJob implements ShouldQueue
         }
 
         try {
-            $service->processGeneration($plan, $this->params, $user);
+            $service->processGenerationChunked($plan, $this->params, $user);
         } catch (\Throwable $e) {
             Log::error('Meal plan job failed', [
                 'plan_id' => $this->mealPlanId,

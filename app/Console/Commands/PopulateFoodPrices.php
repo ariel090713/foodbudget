@@ -6,7 +6,6 @@ use App\Models\Country;
 use App\Models\FoodPrice;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use OpenAI\Laravel\Facades\OpenAI;
 
 class PopulateFoodPrices extends Command
 {
@@ -222,26 +221,36 @@ PROMPT;
 
     private function callAI(string $prompt): array
     {
-        $response = OpenAI::chat()->create([
-            'model' => config('budgetbite.openai_model', 'gpt-4o-mini'),
-            'messages' => [
-                ['role' => 'system', 'content' => 'You are a grocery price database with accurate knowledge of real food prices worldwide. Return only valid JSON with an "items" array.'],
-                ['role' => 'user', 'content' => $prompt],
-            ],
-            'response_format' => ['type' => 'json_object'],
-            'temperature' => 0.3,
-        ]);
+        $model = config('budgetbite.gemini_model', 'gemini-2.0-flash');
 
-        $content = $response->choices[0]->message->content;
+        $genConfig = new \Gemini\Data\GenerationConfig(
+            temperature: 0.3,
+            responseMimeType: \Gemini\Enums\ResponseMimeType::APPLICATION_JSON,
+        );
+
+        $result = \Gemini\Laravel\Facades\Gemini::generativeModel(model: $model)
+            ->withGenerationConfig($genConfig)
+            ->withSystemInstruction(\Gemini\Data\Content::parse(
+                part: 'You are a grocery price database with accurate knowledge of real food prices worldwide. Return only valid JSON with an "items" array.',
+            ))
+            ->generateContent($prompt);
+
+        $content = $result->text();
+
+        // Strip markdown code blocks if present
+        $content = preg_replace('/^```(?:json)?\s*/m', '', $content);
+        $content = preg_replace('/```\s*$/m', '', $content);
+        $content = trim($content);
+
         $parsed = json_decode($content, true);
 
         if (! $parsed) {
-            throw new \RuntimeException('Failed to parse AI response');
+            throw new \RuntimeException('Failed to parse Gemini response');
         }
 
         $items = $parsed['items'] ?? $parsed;
         if (! is_array($items) || empty($items)) {
-            throw new \RuntimeException('No food items in AI response');
+            throw new \RuntimeException('No food items in Gemini response');
         }
 
         return $items;

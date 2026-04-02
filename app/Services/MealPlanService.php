@@ -80,10 +80,16 @@ class MealPlanService
     }
 
     /**
-     * Process the actual AI generation (called from background job).
+     * Process the actual AI generation in chunks (called from background job).
+     * Splits large plans into 7-day batches for reliable generation.
      */
-    public function processGeneration(MealPlan $plan, array $params, User $user): void
+    public function processGenerationChunked(MealPlan $plan, array $params, User $user): void
     {
+        $totalDays = $params['numberOfDays'];
+        $chunkSize = 7;
+        $allDays = [];
+        $totalCost = 0;
+
         $dailyBudgetPerPerson = $this->calculateDailyBudget(
             $params['totalBudget'],
             $params['numberOfDays'],
@@ -97,43 +103,70 @@ class MealPlanService
         $isExtremelyLow = $dailyBudgetPerPerson < ($thresholds['poor_min'] * config('budgetbite.basic_meal_threshold_multiplier', 0.5));
         $isPremium = $this->subscriptionService->isActive($user);
 
-        $aiResponse = $this->openAIService->generateMealPlan([
-            'totalBudget' => $params['totalBudget'],
-            'dailyBudgetPerPerson' => round($dailyBudgetPerPerson, 2),
-            'currencyCode' => $params['currencyCode'],
-            'numberOfDays' => $params['numberOfDays'],
-            'numberOfPersons' => $params['numberOfPersons'],
-            'startDate' => $params['startDate'],
-            'countryCode' => $params['countryCode'],
-            'economicTier' => $tier,
-            'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
-            'isExtremelyLowBudget' => $isExtremelyLow,
-            'includePremiumData' => $isPremium,
-        ]);
+        $startDate = \Carbon\Carbon::parse($params['startDate']);
+        $remainingBudget = $params['totalBudget'];
 
-        // Build days with proper dates
-        $startDate = Carbon::parse($params['startDate']);
-        $days = [];
-        $totalCost = 0;
+        // Generate in chunks of 7 days
+        for ($offset = 0; $offset < $totalDays; $offset += $chunkSize) {
+            $daysInChunk = min($chunkSize, $totalDays - $offset);
+            $chunkStartDate = $startDate->copy()->addDays($offset);
 
-        foreach ($aiResponse['days'] ?? [] as $i => $day) {
-            $day['dayIndex'] = $i;
-            $day['date'] = $startDate->copy()->addDays($i)->toDateString();
-            $dailyCost = (float) ($day['dailyCost'] ?? 0);
-            $totalCost += $dailyCost;
-            $days[] = $day;
+            // Budget for this chunk = proportional share of remaining budget
+            $daysLeft = $totalDays - $offset;
+            $chunkBudget = round(($remainingBudget / $daysLeft) * $daysInChunk, 2);
+
+            // Collect previous day meals for variety context
+            $previousMeals = [];
+            $lookback = array_slice($allDays, -2);
+            foreach ($lookback as $day) {
+                foreach ($day['meals'] ?? [] as $meal) {
+                    if (! ($meal['isSkipped'] ?? false)) {
+                        $previousMeals[] = $meal['name'] ?? '';
+                    }
+                }
+            }
+            $previousMealsNote = ! empty($previousMeals)
+                ? 'Meals already used in previous days (DO NOT repeat these): ' . implode(', ', $previousMeals)
+                : '';
+
+            $aiResponse = $this->openAIService->generateMealPlan([
+                'totalBudget' => $chunkBudget,
+                'dailyBudgetPerPerson' => round($dailyBudgetPerPerson, 2),
+                'currencyCode' => $params['currencyCode'],
+                'numberOfDays' => $daysInChunk,
+                'numberOfPersons' => $params['numberOfPersons'],
+                'startDate' => $chunkStartDate->toDateString(),
+                'countryCode' => $params['countryCode'],
+                'economicTier' => $tier,
+                'skippedMealTypes' => $params['skippedMealTypes'] ?? [],
+                'isExtremelyLowBudget' => $isExtremelyLow,
+                'includePremiumData' => $isPremium,
+                'previousMealsNote' => $previousMealsNote,
+            ]);
+
+            $chunkCost = 0;
+            foreach ($aiResponse['days'] ?? [] as $i => $day) {
+                $globalIndex = $offset + $i;
+                $day['dayIndex'] = $globalIndex;
+                $day['date'] = $startDate->copy()->addDays($globalIndex)->toDateString();
+                $dailyCost = (float) ($day['dailyCost'] ?? 0);
+                $chunkCost += $dailyCost;
+                $allDays[] = $day;
+            }
+
+            $totalCost += $chunkCost;
+            $remainingBudget -= $chunkCost;
+
+            // Update plan progressively so Flutter can show partial results
+            $plan->update([
+                'days_json' => $allDays,
+                'total_cost' => min($totalCost, $params['totalBudget']),
+                'remaining_budget' => max(0, $params['totalBudget'] - $totalCost),
+                'detected_tier' => $tier,
+            ]);
         }
 
-        $totalCost = min($totalCost, $params['totalBudget']);
-        $remainingBudget = max(0, $params['totalBudget'] - $totalCost);
-
-        $plan->update([
-            'days_json' => $days,
-            'total_cost' => $totalCost,
-            'remaining_budget' => $remainingBudget,
-            'detected_tier' => $tier,
-            'status' => 'completed',
-        ]);
+        $plan->update(['status' => 'completed']);
     }
 
     public function regenerateDay(MealPlan $plan, int $dayIndex): array

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use Gemini\Data\Content;
+use Gemini\Enums\MimeType;
+use Gemini\Laravel\Facades\Gemini;
 use Illuminate\Support\Facades\Log;
-use OpenAI\Laravel\Facades\OpenAI;
 
 class OpenAIService
 {
@@ -47,8 +49,8 @@ class OpenAIService
                 . "- It is OK to serve plain rice with salt, rice with sugar, rice with soy sauce, instant noodles, or just water\n"
                 . "- Mark these meals with \"isBasicMeal\": true\n"
                 . "- This is survival mode — the goal is calories to survive, not nutrition or variety\n"
-                . "- A meal can literally be \"Kanin at Asin\" (rice and salt) costing ~₱8-10 for 1 cup rice + pinch of salt\n"
-                . "- Do NOT pretend you can make adobo or sinigang for ₱20 — be honest about what the budget allows";
+                . "- A meal can literally be \"Kanin at Asin\" (rice and salt) costing ~8-10 for 1 cup rice + pinch of salt\n"
+                . "- Do NOT pretend you can make adobo or sinigang for 20 — be honest about what the budget allows";
         }
 
         $premiumInstruction = '';
@@ -67,14 +69,19 @@ class OpenAIService
         }
 
         $varietyRule = $params['numberOfDays'] > 1
-            ? "- VARIETY IS CRITICAL: For multi-day plans, NEVER repeat the same meal name for the same meal type across ANY two days. Each breakfast must be different, each lunch must be different, etc. Use the full range of local dishes available at this budget level."
+            ? "- VARIETY IS CRITICAL: For multi-day plans, NEVER repeat the same meal name for the same meal type across ANY two days."
             : "- Use a good variety of local dishes for the 4 meals.";
 
+        $previousMealsContext = '';
+        if (! empty($params['previousMealsNote'])) {
+            $previousMealsContext = "\n{$params['previousMealsNote']}\n";
+        }
+
         return <<<PROMPT
-You are a meal cost calculator and budget planner with EXACT knowledge of real {$params['countryCode']} grocery/wet market prices as of 2025. You plan homemade meals, NOT restaurant meals.
+You are a meal cost calculator with EXACT knowledge of real {$params['countryCode']} grocery/wet market prices as of 2025. You plan homemade meals, NOT restaurant meals.
 
 Generate a {$params['numberOfDays']}-day meal plan for {$params['numberOfPersons']} person(s) in {$params['countryCode']}.
-
+{$previousMealsContext}
 Budget: {$params['totalBudget']} {$params['currencyCode']} total
 Daily budget per person: {$dailyBudget} {$params['currencyCode']}
 Economic tier: {$params['economicTier']}
@@ -86,25 +93,23 @@ Skipped meals: {$skipped}
 {$survivalNote}
 {$premiumInstruction}
 
-PRICING RULES — YOU MUST FOLLOW THESE:
+PRICING RULES:
 1. estimatedCost = actual cost to BUY the raw ingredients for {$params['numberOfPersons']} person(s)
 2. List ingredients with EXACT quantities: "rice 1 cup (150g)", "egg 1 pc", "pork 100g"
 3. Calculate cost per ingredient based on the price reference above, then SUM them
-4. Example: Sinangag + Itlog = rice 1 cup (~₱8) + cooking oil 1 tbsp (~₱3) + garlic 2 cloves (~₱3) + egg 1 pc (~₱11) = ₱25 total. So estimatedCost: 25
-5. NEVER guess — if chicken adobo needs 250g chicken (₱50) + soy sauce 2 tbsp (₱5) + vinegar 2 tbsp (₱4) + garlic (₱3) + rice 1 cup (₱8) = ₱70 minimum
-6. If the budget cannot afford a real dish, use survival meals: kanin at asin, kanin at asukal, instant noodles, lugaw
-7. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
-8. totalCost MUST equal the SUM of all dailyCosts
-9. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']}
+4. If the budget cannot afford a real dish, use survival meals: kanin at asin, kanin at asukal, instant noodles
+5. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
+6. totalCost MUST equal the SUM of all dailyCosts
+7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']}
 
 MEAL RULES:
 - Each day has 4 slots: breakfast, lunch, dinner, meryenda
-- All 4 slots must appear in the response (skipped ones with isSkipped: true)
+- All 4 slots must appear (skipped ones with isSkipped: true)
 {$varietyRule}
 - Meals must be appropriate for "{$params['economicTier']}" tier
 - Use local {$params['countryCode']} cuisine and local ingredient names
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no code blocks, no explanation):
 {
   "days": [
     {
@@ -190,9 +195,8 @@ RULES:
 - Daily cost must not exceed {$params['dailyBudget']} {$params['currencyCode']}
 - 4 meal slots: breakfast, lunch, dinner, meryenda
 - Skipped meals: estimatedCost: 0, ingredients: [], isSkipped: true
-- If budget is very low, survival meals are OK (rice + salt, instant noodles)
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown, no code blocks):
 {
   "dayIndex": {$params['dayIndex']},
   "meals": [...],
@@ -204,44 +208,52 @@ PROMPT;
     private function callWithRetry(string $prompt, int $maxRetries = 3): array
     {
         $lastException = null;
+        $model = config('budgetbite.gemini_model', 'gemini-2.0-flash');
+
+        $genConfig = new \Gemini\Data\GenerationConfig(
+            temperature: 0.3,
+            responseMimeType: \Gemini\Enums\ResponseMimeType::APPLICATION_JSON,
+        );
 
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
             try {
-                $response = OpenAI::chat()->create([
-                    'model' => config('budgetbite.openai_model', 'gpt-4o-mini'),
-                    'messages' => [
-                        ['role' => 'system', 'content' => 'You are a meal budget calculator. You know EXACT real grocery prices. You calculate meal costs by summing individual ingredient costs. You never underestimate. If the budget is too low for real food, you suggest survival meals like plain rice with salt or sugar. You return only valid JSON.'],
-                        ['role' => 'user', 'content' => $prompt],
-                    ],
-                    'response_format' => ['type' => 'json_object'],
-                    'temperature' => 0.3,
-                ]);
+                $result = Gemini::generativeModel(model: $model)
+                    ->withGenerationConfig($genConfig)
+                    ->withSystemInstruction(Content::parse(
+                        part: 'You are a meal budget calculator. You know EXACT real grocery prices. You calculate meal costs by summing individual ingredient costs. You never underestimate. If the budget is too low for real food, you suggest survival meals like plain rice with salt or sugar. You return only valid JSON.',
+                    ))
+                    ->generateContent($prompt);
 
-                $content = $response->choices[0]->message->content;
+                $content = $result->text();
+                $content = preg_replace('/^```(?:json)?\s*/m', '', $content);
+                $content = preg_replace('/```\s*$/m', '', $content);
+                $content = trim($content);
+
                 $parsed = json_decode($content, true);
 
                 if ($parsed === null) {
-                    Log::warning('OpenAI returned malformed JSON', ['attempt' => $attempt]);
-                    $lastException = new \RuntimeException('Malformed JSON from OpenAI');
+                    Log::warning('Gemini returned malformed JSON', [
+                        'attempt' => $attempt,
+                        'content' => substr($content, 0, 200),
+                    ]);
+                    $lastException = new \RuntimeException('Malformed JSON from Gemini');
                     continue;
                 }
 
                 return $parsed;
-            } catch (\OpenAI\Exceptions\ErrorException $e) {
-                Log::error('OpenAI API error', ['attempt' => $attempt, 'message' => $e->getMessage()]);
-                $lastException = $e;
-                if ($attempt < $maxRetries) {
-                    sleep(min(pow(2, $attempt), 8));
-                }
             } catch (\Throwable $e) {
-                Log::error('OpenAI unexpected error', ['attempt' => $attempt, 'message' => $e->getMessage()]);
+                Log::error('Gemini API error', [
+                    'attempt' => $attempt,
+                    'message' => $e->getMessage(),
+                ]);
                 $lastException = $e;
+
                 if ($attempt < $maxRetries) {
                     sleep(min(pow(2, $attempt), 8));
                 }
             }
         }
 
-        throw $lastException ?? new \RuntimeException('OpenAI call failed after retries');
+        throw $lastException ?? new \RuntimeException('Gemini call failed after retries');
     }
 }

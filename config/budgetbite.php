@@ -2,7 +2,7 @@
 
 return [
     'api_key' => env('FOODBUDGET_API_KEY'),
-    'openai_model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+    'gemini_model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
     'free_tier_max_days' => 1,
     'basic_meal_threshold_multiplier' => 0.5,
 
