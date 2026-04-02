@@ -8,6 +8,7 @@ use App\Services\SubscriptionService;
 use App\Services\TierService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -23,27 +24,48 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Meal plan generation: free = 3/day, premium = 10/day
         RateLimiter::for('meal-plan-generate', function (Request $request) {
             $user = $request->user();
             $isPremium = $user?->subscription?->isActive();
             $limit = $isPremium
                 ? config('budgetbite.rate_limits.premium_plans_per_day', 10)
-                : config('budgetbite.rate_limits.free_plans_per_day', 3);
+                : config('budgetbite.rate_limits.free_plans_per_day', 5);
 
-            return Limit::perDay($limit)->by($user?->id ?: $request->ip());
+            return Limit::perDay($limit)
+                ->by($user?->id ?: $request->ip())
+                ->response(function (Request $request, array $headers) use ($limit, $isPremium) {
+                    $tier = $isPremium ? 'Premium' : 'Free';
+                    $upgrade = $isPremium ? '' : ' Upgrade to premium for more.';
+
+                    return response()->json([
+                        'message' => "{$tier} limit reached: {$limit} meal plans per day.{$upgrade}",
+                        'limit' => $limit,
+                        'tier' => $isPremium ? 'premium' : 'free',
+                        'retryAfter' => $headers['Retry-After'] ?? null,
+                    ], 429, $headers);
+                });
         });
 
-        // Day regeneration: free = 2/day, premium = unlimited (100/day)
         RateLimiter::for('meal-plan-regenerate', function (Request $request) {
             $user = $request->user();
             $isPremium = $user?->subscription?->isActive();
-            $limit = $isPremium ? 100 : config('budgetbite.rate_limits.free_regenerations_per_day', 2);
+            $limit = $isPremium ? 100 : config('budgetbite.rate_limits.free_regenerations_per_day', 5);
 
-            return Limit::perDay($limit)->by($user?->id ?: $request->ip());
+            return Limit::perDay($limit)
+                ->by($user?->id ?: $request->ip())
+                ->response(function (Request $request, array $headers) use ($limit, $isPremium) {
+                    $tier = $isPremium ? 'Premium' : 'Free';
+                    $upgrade = $isPremium ? '' : ' Upgrade to premium for unlimited regenerations.';
+
+                    return response()->json([
+                        'message' => "{$tier} limit reached: {$limit} day regenerations per day.{$upgrade}",
+                        'limit' => $limit,
+                        'tier' => $isPremium ? 'premium' : 'free',
+                        'retryAfter' => $headers['Retry-After'] ?? null,
+                    ], 429, $headers);
+                });
         });
 
-        // General API rate limit
         RateLimiter::for('api', function (Request $request) {
             $config = config('budgetbite.rate_limits.api_general');
 

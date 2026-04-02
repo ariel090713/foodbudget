@@ -9,8 +9,8 @@ return [
     'basic_meal_threshold_multiplier' => 0.5,
 
     'rate_limits' => [
-        'free_plans_per_day' => 3,
-        'free_regenerations_per_day' => 2,
+        'free_plans_per_day' => 5,
+        'free_regenerations_per_day' => 5,
         'free_max_saved_plans' => 5,
         'premium_plans_per_day' => 10,
         'api_general' => [
