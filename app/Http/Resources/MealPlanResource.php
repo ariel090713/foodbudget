@@ -15,6 +15,8 @@ class MealPlanResource extends JsonResource
             'status' => $this->status,
             'request' => $this->request_json,
             'days' => $this->days_json,
+            'generatedDays' => count($this->days_json ?? []),
+            'totalDays' => $this->request_json['numberOfDays'] ?? 0,
             'totalCost' => (float) $this->total_cost,
             'remainingBudget' => (float) $this->remaining_budget,
             'detectedTier' => $this->detected_tier,

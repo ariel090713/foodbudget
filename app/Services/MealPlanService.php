@@ -28,6 +28,20 @@ class MealPlanService
             throw new AccessDeniedHttpException('Subscription required for multi-day plans.');
         }
 
+        // Free tier: max saved plans limit
+        if (! $this->subscriptionService->isActive($user)) {
+            $maxPlans = config('budgetbite.rate_limits.free_max_saved_plans', 5);
+            $currentPlans = MealPlan::where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->count();
+
+            if ($currentPlans >= $maxPlans) {
+                throw new AccessDeniedHttpException(
+                    "Free tier limit: you can save up to {$maxPlans} meal plans. Delete old plans or upgrade to premium for unlimited plans."
+                );
+            }
+        }
+
         $dailyBudgetPerPerson = $this->calculateDailyBudget(
             $params['totalBudget'],
             $params['numberOfDays'],
@@ -86,7 +100,8 @@ class MealPlanService
     public function processGenerationChunked(MealPlan $plan, array $params, User $user): void
     {
         $totalDays = $params['numberOfDays'];
-        $chunkSize = 7;
+        // 3-day chunks: fast results (~8 sec each) + efficient API usage
+        $chunkSize = min(3, $totalDays);
         $allDays = [];
         $totalCost = 0;
 
@@ -110,6 +125,10 @@ class MealPlanService
         for ($offset = 0; $offset < $totalDays; $offset += $chunkSize) {
             $daysInChunk = min($chunkSize, $totalDays - $offset);
             $chunkStartDate = $startDate->copy()->addDays($offset);
+            $chunkNum = (int) ($offset / $chunkSize) + 1;
+
+            Log::info("Generating chunk {$chunkNum}: days {$offset}-" . ($offset + $daysInChunk - 1) . " for plan {$plan->id}");
+            $chunkStart = microtime(true);
 
             // Budget for this chunk = proportional share of remaining budget
             $daysLeft = $totalDays - $offset;
@@ -156,6 +175,9 @@ class MealPlanService
 
             $totalCost += $chunkCost;
             $remainingBudget -= $chunkCost;
+
+            $elapsed = round(microtime(true) - $chunkStart, 1);
+            Log::info("Chunk {$chunkNum} done in {$elapsed}s — {$daysInChunk} days, cost: {$chunkCost}");
 
             // Update plan progressively so Flutter can show partial results
             $plan->update([

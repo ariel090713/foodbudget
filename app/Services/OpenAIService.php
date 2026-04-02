@@ -2,9 +2,6 @@
 
 namespace App\Services;
 
-use Gemini\Data\Content;
-use Gemini\Enums\MimeType;
-use Gemini\Laravel\Facades\Gemini;
 use Illuminate\Support\Facades\Log;
 
 class OpenAIService
@@ -135,34 +132,27 @@ PROMPT;
 
     private function getPriceReference(string $countryCode): string
     {
+        // Only include common items to keep prompt short and fast
         $prices = \App\Models\FoodPrice::where('country_code', $countryCode)
+            ->where('is_common', true)
             ->orderBy('category')
-            ->orderByDesc('is_common')
+            ->limit(30) // Cap at 30 items to keep prompt lean
             ->get();
 
         if ($prices->isEmpty()) {
-            return "No price data available for this country. Use your best knowledge of real 2025 grocery prices for country code {$countryCode}. Do NOT underestimate.";
+            return "Use your best knowledge of real 2025 grocery prices for country code {$countryCode}. Do NOT underestimate.";
         }
 
         $country = \App\Models\Country::find($countryCode);
-        $currencySymbol = $country?->currency_symbol ?? '';
-        $countryName = $country?->name ?? $countryCode;
+        $sym = $country?->currency_symbol ?? '';
 
-        $lines = ["REAL 2025 {$countryName} MARKET PRICES (use these as reference):"];
-        $currentCategory = '';
+        $lines = ["PRICE REFERENCE ({$country?->name}):"];
 
-        foreach ($prices as $price) {
-            if ($price->category !== $currentCategory) {
-                $currentCategory = $price->category;
-                $lines[] = strtoupper($currentCategory) . ':';
-            }
-
-            $name = $price->item_name;
-            if ($price->local_name && $price->local_name !== $price->item_name) {
-                $name .= " ({$price->local_name})";
-            }
-
-            $lines[] = "  {$name}: {$price->unit} = {$currencySymbol}{$price->price_min}-{$price->price_max}";
+        foreach ($prices as $p) {
+            $name = $p->local_name && $p->local_name !== $p->item_name
+                ? "{$p->item_name} ({$p->local_name})"
+                : $p->item_name;
+            $lines[] = "{$name}: {$p->unit} = {$sym}{$p->price_min}-{$p->price_max}";
         }
 
         return implode("\n", $lines);
@@ -208,52 +198,38 @@ PROMPT;
     private function callWithRetry(string $prompt, int $maxRetries = 3): array
     {
         $lastException = null;
-        $model = config('budgetbite.gemini_model', 'gemini-2.0-flash');
-
-        $genConfig = new \Gemini\Data\GenerationConfig(
-            temperature: 0.3,
-            responseMimeType: \Gemini\Enums\ResponseMimeType::APPLICATION_JSON,
-        );
 
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
             try {
-                $result = Gemini::generativeModel(model: $model)
-                    ->withGenerationConfig($genConfig)
-                    ->withSystemInstruction(Content::parse(
-                        part: 'You are a meal budget calculator. You know EXACT real grocery prices. You calculate meal costs by summing individual ingredient costs. You never underestimate. If the budget is too low for real food, you suggest survival meals like plain rice with salt or sugar. You return only valid JSON.',
-                    ))
-                    ->generateContent($prompt);
+                $response = \OpenAI\Laravel\Facades\OpenAI::chat()->create([
+                    'model' => config('budgetbite.openai_model', 'gpt-4o-mini'),
+                    'messages' => [
+                        ['role' => 'system', 'content' => 'You are a meal budget calculator. You know EXACT real grocery prices. You calculate meal costs by summing individual ingredient costs. You never underestimate. If the budget is too low for real food, you suggest survival meals like plain rice with salt or sugar. You return only valid JSON.'],
+                        ['role' => 'user', 'content' => $prompt],
+                    ],
+                    'response_format' => ['type' => 'json_object'],
+                    'temperature' => 0.3,
+                ]);
 
-                $content = $result->text();
-                $content = preg_replace('/^```(?:json)?\s*/m', '', $content);
-                $content = preg_replace('/```\s*$/m', '', $content);
-                $content = trim($content);
-
+                $content = $response->choices[0]->message->content;
                 $parsed = json_decode($content, true);
 
                 if ($parsed === null) {
-                    Log::warning('Gemini returned malformed JSON', [
-                        'attempt' => $attempt,
-                        'content' => substr($content, 0, 200),
-                    ]);
-                    $lastException = new \RuntimeException('Malformed JSON from Gemini');
+                    Log::warning('OpenAI returned malformed JSON', ['attempt' => $attempt]);
+                    $lastException = new \RuntimeException('Malformed JSON from OpenAI');
                     continue;
                 }
 
                 return $parsed;
             } catch (\Throwable $e) {
-                Log::error('Gemini API error', [
-                    'attempt' => $attempt,
-                    'message' => $e->getMessage(),
-                ]);
+                Log::error('OpenAI API error', ['attempt' => $attempt, 'message' => $e->getMessage()]);
                 $lastException = $e;
-
                 if ($attempt < $maxRetries) {
                     sleep(min(pow(2, $attempt), 8));
                 }
             }
         }
 
-        throw $lastException ?? new \RuntimeException('Gemini call failed after retries');
+        throw $lastException ?? new \RuntimeException('OpenAI call failed after retries');
     }
 }

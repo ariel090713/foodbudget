@@ -23,20 +23,27 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Meal plan generation: free = 3/day, premium = 10/day
         RateLimiter::for('meal-plan-generate', function (Request $request) {
-            $config = config('budgetbite.rate_limits.meal_plan_generate');
+            $user = $request->user();
+            $isPremium = $user?->subscription?->isActive();
+            $limit = $isPremium
+                ? config('budgetbite.rate_limits.premium_plans_per_day', 10)
+                : config('budgetbite.rate_limits.free_plans_per_day', 3);
 
-            return Limit::perMinutes($config['decay_minutes'], $config['max_attempts'])
-                ->by($request->user()?->id ?: $request->ip());
+            return Limit::perDay($limit)->by($user?->id ?: $request->ip());
         });
 
+        // Day regeneration: free = 2/day, premium = unlimited (100/day)
         RateLimiter::for('meal-plan-regenerate', function (Request $request) {
-            $config = config('budgetbite.rate_limits.meal_plan_regenerate');
+            $user = $request->user();
+            $isPremium = $user?->subscription?->isActive();
+            $limit = $isPremium ? 100 : config('budgetbite.rate_limits.free_regenerations_per_day', 2);
 
-            return Limit::perMinutes($config['decay_minutes'], $config['max_attempts'])
-                ->by($request->user()?->id ?: $request->ip());
+            return Limit::perDay($limit)->by($user?->id ?: $request->ip());
         });
 
+        // General API rate limit
         RateLimiter::for('api', function (Request $request) {
             $config = config('budgetbite.rate_limits.api_general');
 

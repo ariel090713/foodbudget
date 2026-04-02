@@ -3,18 +3,15 @@
 return [
     'api_key' => env('FOODBUDGET_API_KEY'),
     'gemini_model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+    'openai_model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
     'free_tier_max_days' => 1,
     'basic_meal_threshold_multiplier' => 0.5,
 
     'rate_limits' => [
-        'meal_plan_generate' => [
-            'max_attempts' => (int) env('MEALPLAN_RATE_LIMIT', 10),
-            'decay_minutes' => (int) env('MEALPLAN_RATE_LIMIT_WINDOW', 60),
-        ],
-        'meal_plan_regenerate' => [
-            'max_attempts' => (int) env('REGENERATE_RATE_LIMIT', 20),
-            'decay_minutes' => (int) env('REGENERATE_RATE_LIMIT_WINDOW', 60),
-        ],
+        'free_plans_per_day' => 3,
+        'free_regenerations_per_day' => 2,
+        'free_max_saved_plans' => 5,
+        'premium_plans_per_day' => 10,
         'api_general' => [
             'max_attempts' => 120,
             'decay_minutes' => 1,
