@@ -78,7 +78,7 @@ class OpenAIService
 
         $activeMeals = 3 - count($params['skippedMealTypes'] ?? []);
         $mealBudget = $activeMeals > 0 ? round($dailyBudget / $activeMeals, 2) : 0;
-        $budgetTarget = round($params['totalBudget'] * 0.9, 2); // aim for 90% usage
+        $budgetTarget = round($params['totalBudget'] * 0.85, 2); // aim for 85%+ usage
         $dailyTarget = round($budgetTarget / $params['numberOfDays'], 2);
 
         return <<<PROMPT
@@ -105,10 +105,15 @@ PRICING RULES — CRITICAL:
 5. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
 6. totalCost MUST equal the SUM of all dailyCosts
 7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']} — THIS IS A HARD LIMIT
-8. BUDGET UTILIZATION: Try to USE 80-95% of the total budget. Do NOT be overly frugal.
-   - Budget: {$params['totalBudget']}, so aim for total cost around {$budgetTarget}
-   - Per day target: ~{$dailyTarget} per day
-   - Per meal target: ~{$mealBudget} per meal
+8. BUDGET UTILIZATION — THIS IS CRITICAL:
+   - You MUST use at least 80% of the total budget. Underspending is a FAILURE.
+   - Budget: {$params['totalBudget']}, target spend: {$budgetTarget} to {$params['totalBudget']}
+   - Per day target: {$dailyTarget} to {$dailyBudget} per day
+   - Per meal target: around {$mealBudget} per meal
+   - For "rich" tier: use premium cuts, multiple dishes, generous portions. Spend the budget!
+   - For "middleClass" tier: use quality ingredients, balanced meals. Use 85%+ of budget.
+   - For "poor" tier: stretch the budget but still use most of it on real food.
+   - DO NOT return a plan that uses less than 70% of the budget — that means you're not feeding them enough.
 9. TIER MATCHING — match meal quality to the tier:
    - extremePoverty: survival meals, cheapest possible
    - poor: basic meals with simple protein (egg, sardines, dried fish)
