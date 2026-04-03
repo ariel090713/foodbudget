@@ -106,19 +106,21 @@ PRICING RULES — CRITICAL:
 6. totalCost MUST equal the SUM of all dailyCosts
 7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']} — THIS IS A HARD LIMIT
 8. BUDGET UTILIZATION — THIS IS CRITICAL:
-   - You MUST use at least 80% of the total budget. Underspending is a FAILURE.
    - Budget: {$params['totalBudget']}, target spend: {$budgetTarget} to {$params['totalBudget']}
-   - Per day target: {$dailyTarget} to {$dailyBudget} per day
    - Per meal target: around {$mealBudget} per meal
-   - For "rich" tier: use premium cuts, multiple dishes, generous portions. Spend the budget!
-   - For "middleClass" tier: use quality ingredients, balanced meals. Use 85%+ of budget.
-   - For "poor" tier: stretch the budget but still use most of it on real food.
-   - DO NOT return a plan that uses less than 70% of the budget — that means you're not feeding them enough.
-9. TIER MATCHING — match meal quality to the tier:
-   - extremePoverty: survival meals, cheapest possible
-   - poor: basic meals with simple protein (egg, sardines, dried fish)
-   - middleClass: balanced meals with meat/fish, vegetables, variety
-   - rich: premium ingredients, multiple dishes per meal, restaurant-quality home cooking, imported ingredients OK
+   - To use more budget: ADD MORE DISHES per meal, use PREMIUM INGREDIENTS, use LARGER PORTIONS
+   - Do NOT inflate individual dish prices — a tapsilog is still ₱50-80, not ₱2000
+   - Instead, add more dishes: appetizer + soup + main + side + dessert + drink
+   - For "rich" tier with high budget: 4-6 dishes per meal (e.g. appetizer, soup, main course, 2 sides, dessert)
+   - For "middleClass": 2-4 dishes per meal
+   - For "poor": 1-2 dishes per meal
+   - Each dish price must be REALISTIC based on the price reference above
+   - DO NOT return a plan that uses less than 70% of the budget
+9. TIER MATCHING — match meal quality AND quantity to the tier:
+   - extremePoverty: survival meals, 1 dish, cheapest possible
+   - poor: basic meals, 1-2 dishes, simple protein (egg, sardines, dried fish)
+   - middleClass: balanced meals, 2-3 dishes with meat/fish, vegetables, variety
+   - rich: premium ingredients, 4-6 dishes per meal, premium cuts (tenderloin, salmon, prawns), imported cheese, fresh fruits, desserts, drinks
 
 MEAL RULES:
 - Each day has 3 meal slots: breakfast, lunch, dinner
