@@ -8,26 +8,26 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
 
-// Initial population: fill countries that have no prices yet (10 at a time)
-Schedule::command('foodprices:populate --batch=10 --mode=initial')
+// PRIORITY 1: Initial population — fill ALL countries first (15 at a time, every 2 min)
+Schedule::command('foodprices:populate --batch=15 --mode=initial')
+    ->everyTwoMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// PRIORITY 2: Tier thresholds for countries still on defaults
+Schedule::command('tiers:populate --batch=30')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 
-// Expand: add more food items to countries with < 2000 items (5 at a time)
+// PRIORITY 3: Expand — only runs after all countries have initial data (5 at a time, every 5 min)
 Schedule::command('foodprices:populate --batch=5 --mode=expand')
-    ->everyFifteenMinutes()
+    ->everyFiveMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 
-// Update: refresh prices on existing items (2 countries at a time)
+// PRIORITY 4: Update prices weekly
 Schedule::command('foodprices:populate --batch=2 --mode=update')
     ->weekly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Update tier thresholds for any countries still on defaults
-Schedule::command('tiers:populate --batch=20')
-    ->daily()
     ->withoutOverlapping()
     ->runInBackground();

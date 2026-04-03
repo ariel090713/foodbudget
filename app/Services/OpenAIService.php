@@ -78,6 +78,8 @@ class OpenAIService
 
         $activeMeals = 3 - count($params['skippedMealTypes'] ?? []);
         $mealBudget = $activeMeals > 0 ? round($dailyBudget / $activeMeals, 2) : 0;
+        $budgetTarget = round($params['totalBudget'] * 0.9, 2); // aim for 90% usage
+        $dailyTarget = round($budgetTarget / $params['numberOfDays'], 2);
 
         return <<<PROMPT
 You are a meal cost calculator with EXACT knowledge of real {$params['countryCode']} grocery/wet market prices as of 2025. You plan homemade meals, NOT restaurant meals.
@@ -103,9 +105,15 @@ PRICING RULES — CRITICAL:
 5. dailyCost MUST equal the SUM of all non-skipped meal estimatedCosts for that day
 6. totalCost MUST equal the SUM of all dailyCosts
 7. totalCost MUST NOT exceed {$params['totalBudget']} {$params['currencyCode']} — THIS IS A HARD LIMIT
-8. BEFORE generating, calculate: budget per day = {$params['totalBudget']} / {$params['numberOfDays']} = {$dailyBudget} per person per day
-9. Each meal's cost must fit within the daily budget. If 3 meals at {$dailyBudget}/day, each meal averages {$mealBudget}
-10. DOUBLE CHECK: add up all meal costs. If total > {$params['totalBudget']}, reduce portions or use cheaper meals
+8. BUDGET UTILIZATION: Try to USE 80-95% of the total budget. Do NOT be overly frugal.
+   - Budget: {$params['totalBudget']}, so aim for total cost around {$budgetTarget}
+   - Per day target: ~{$dailyTarget} per day
+   - Per meal target: ~{$mealBudget} per meal
+9. TIER MATCHING — match meal quality to the tier:
+   - extremePoverty: survival meals, cheapest possible
+   - poor: basic meals with simple protein (egg, sardines, dried fish)
+   - middleClass: balanced meals with meat/fish, vegetables, variety
+   - rich: premium ingredients, multiple dishes per meal, restaurant-quality home cooking, imported ingredients OK
 
 MEAL RULES:
 - Each day has 3 meal slots: breakfast, lunch, dinner
@@ -114,12 +122,16 @@ MEAL RULES:
 - Meals must be appropriate for "{$params['economicTier']}" tier
 - Use local {$params['countryCode']} cuisine and local ingredient names
 - For each meal, include "imageSearchTerm": a short ENGLISH description for image search
-- A meal can have multiple dishes! Use the "dishes" array for countries where meals have multiple components
-  Example: Korean lunch = rice + main dish + side dishes (banchan) + soup
-  Example: Filipino lunch = rice + ulam (main dish)
-  Example: Indian lunch = rice/roti + dal + sabzi + raita
-  For simple meals (1 dish only), still use the dishes array with 1 item
-- estimatedCost is the TOTAL cost of all dishes in that meal combined
+- MULTIPLE DISHES PER MEAL: Use the "dishes" array. Every culture has multi-dish meals:
+  * Filipino: rice + ulam + sabaw (soup) + side
+  * Korean: rice + main + banchan (side dishes) + soup
+  * Japanese: rice + main + miso soup + pickles
+  * Indian: rice/roti + dal + sabzi + raita
+  * Western: main + side + salad/bread
+  * For budget meals: at minimum rice/bread + 1 dish
+  * For rich tier: 3-5 dishes per meal
+  * EACH dish must have its own: name, description, imageSearchTerm (ENGLISH), ingredients, estimatedCost
+  * The meal's total estimatedCost = sum of all dish estimatedCosts
 
 Return ONLY valid JSON (no markdown, no code blocks, no explanation):
 {
@@ -129,19 +141,26 @@ Return ONLY valid JSON (no markdown, no code blocks, no explanation):
       "meals": [
         {
           "type": "breakfast",
-          "name": "Sinangag at Itlog",
-          "description": "Garlic fried rice with fried egg",
-          "imageSearchTerm": "garlic fried rice with egg",
-          "dishes": [
-            {"name": "Sinangag", "description": "Garlic fried rice", "ingredients": ["rice 1 cup (150g)", "garlic 2 cloves", "cooking oil 1 tbsp"]},
-            {"name": "Itlog", "description": "Fried egg", "ingredients": ["egg 1 pc", "cooking oil 1 tsp"]}
-          ],
           "estimatedCost": 25.0,
           "isSkipped": false,
-          "isBasicMeal": false{$premiumMealFields}
-        },
-        {"type": "lunch", "name": "...", "description": "...", "imageSearchTerm": "...", "dishes": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false},
-        {"type": "dinner", "name": "...", "description": "...", "imageSearchTerm": "...", "dishes": [...], "estimatedCost": 0, "isSkipped": false, "isBasicMeal": false}
+          "isBasicMeal": false,
+          "dishes": [
+            {
+              "name": "Sinangag",
+              "description": "Garlic fried rice",
+              "imageSearchTerm": "garlic fried rice",
+              "ingredients": ["rice 1 cup (150g)", "garlic 2 cloves", "cooking oil 1 tbsp"],
+              "estimatedCost": 14.0
+            },
+            {
+              "name": "Itlog",
+              "description": "Fried egg",
+              "imageSearchTerm": "fried egg sunny side up",
+              "ingredients": ["egg 1 pc", "cooking oil 1 tsp"],
+              "estimatedCost": 11.0
+            }
+          ]{$premiumMealFields}
+        }
       ],
       "dailyCost": 50.0
     }

@@ -161,13 +161,19 @@ PROMPT;
             ["Organ meats and offal (liver, intestines, heart, etc.)", "Cheap cuts of meat and bones for soup", "Processed meats (hotdog, corned beef, luncheon meat)"],
             ["Leafy greens and herbs currently in season ({$currentMonth})", "Root vegetables and tubers", "Seasonal fruits available now in {$country->name}"],
             ["Sauces, pastes, curry bases, and marinades", "Spice mixes and seasoning packets", "Cooking essentials (flour, starch, baking items)"],
-            ["Baby food and porridge items", "Instant/ready-to-eat meals and canned meals", "Budget survival foods (absolute cheapest items available)"],
+            ["Budget survival foods (absolute cheapest items)", "Instant/ready-to-eat meals and canned meals", "What the poorest families eat daily in {$country->name}"],
             ["Seafood varieties (fresh, dried, canned, smoked)", "Shellfish and crustaceans", "Seaweed and aquatic vegetables"],
             ["Nuts, seeds, and legumes", "Grains beyond rice (millet, sorghum, quinoa, oats, etc.)", "Noodle and pasta varieties (local and imported)"],
             ["Beverages (local drinks, powdered drinks, fresh juices)", "Dairy products and alternatives", "Frozen foods and ice cream"],
             ["Condiments specific to {$country->name} cuisine", "Cooking oils and fats (different types)", "Vinegars, fermented sauces, and dipping sauces"],
             ["Foods currently in season in {$country->name} ({$currentMonth}, {$currentSeason})", "Seasonal price changes — items that are cheaper right now", "Festival/holiday foods for upcoming celebrations"],
-            ["Complete cheap meals under the poverty line", "Combinations: staple + cheapest protein", "What a family of 4 eats on minimum wage in {$country->name}"],
+            ["PREMIUM MEATS: wagyu/premium beef cuts, lamb chops, prime rib, tenderloin, rib-eye steak", "Premium pork cuts (belly, ribs, chops)", "Specialty sausages and cured meats (salami, prosciutto, chorizo)"],
+            ["PREMIUM SEAFOOD: salmon fillet, tuna steak, prawns/shrimp, lobster, crab, oysters, scallops", "Sashimi-grade fish", "Imported seafood available in {$country->name}"],
+            ["PREMIUM PRODUCE: avocado, asparagus, artichoke, truffle, saffron, fresh herbs (basil, rosemary, thyme)", "Imported fruits (berries, cherries, grapes)", "Organic vegetables"],
+            ["PREMIUM DAIRY & CHEESE: imported cheese (parmesan, mozzarella, brie, cheddar), cream, mascarpone", "Premium butter and olive oil", "Specialty yogurt and cream cheese"],
+            ["MIDDLE CLASS STAPLES: quality rice varieties, whole wheat bread, pasta varieties", "Cooking wines and vinegars", "Baking ingredients (vanilla, chocolate, cream)"],
+            ["MIDDLE CLASS PROTEINS: chicken breast fillet, pork loin, ground beef, fish fillet", "Eggs (free-range, organic)", "Tofu and tempeh varieties"],
+            ["RESTAURANT-QUALITY INGREDIENTS: coconut cream, stock/broth, specialty sauces (oyster, hoisin, teriyaki)", "Fresh pasta and noodle varieties", "Gourmet condiments and dressings"],
         ];
 
         $focusIndex = (int) ($currentCount / 40) % count($focusAreas);

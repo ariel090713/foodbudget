@@ -41,12 +41,13 @@ class ImageService
         foreach ($days as &$day) {
             foreach ($day['meals'] ?? [] as &$meal) {
                 if ($meal['isSkipped'] ?? false) {
-                    $meal['imageUrl'] = null;
                     continue;
                 }
 
-                $searchTerm = $meal['imageSearchTerm'] ?? $meal['description'] ?? $meal['name'] ?? '';
-                $meal['imageUrl'] = $this->getFoodImage($searchTerm);
+                foreach ($meal['dishes'] ?? [] as &$dish) {
+                    $searchTerm = $dish['imageSearchTerm'] ?? $dish['description'] ?? $dish['name'] ?? '';
+                    $dish['imageUrl'] = $this->getFoodImage($searchTerm);
+                }
             }
         }
 
